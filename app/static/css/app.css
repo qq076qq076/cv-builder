@@ -15,3 +15,68 @@ body {
   padding: 32px 0;
 }
 
+.hero {
+  margin-bottom: 32px;
+}
+
+.eyebrow {
+  margin: 0 0 8px;
+  color: #536079;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+h1 {
+  margin: 0;
+  font-size: 40px;
+}
+
+h2 {
+  margin: 0 0 12px;
+  font-size: 24px;
+}
+
+.lead {
+  margin: 12px 0 0;
+  color: #536079;
+  font-size: 18px;
+}
+
+.panel {
+  max-width: 720px;
+  padding: 24px;
+  border: 1px solid #d8deea;
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.panel p {
+  margin: 0;
+  color: #3c465a;
+  line-height: 1.7;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 24px;
+}
+
+.button {
+  display: inline-flex;
+  align-items: center;
+  min-height: 40px;
+  padding: 0 16px;
+  border: 1px solid #172033;
+  border-radius: 6px;
+  background: #172033;
+  color: #ffffff;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.button-secondary {
+  background: #ffffff;
+  color: #172033;
+}
