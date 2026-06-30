@@ -2,6 +2,7 @@ from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 
 from app.routes.dashboard import router as dashboard_router
+from app.routes.import_files import router as import_files_router
 from app.routes.workspace import router as workspace_router
 
 def create_app() -> FastAPI:
@@ -9,6 +10,7 @@ def create_app() -> FastAPI:
 
     app.mount("/static", StaticFiles(directory="app/static"), name="static")
     app.include_router(dashboard_router)
+    app.include_router(import_files_router)
     app.include_router(workspace_router)
 
     @app.get("/health")

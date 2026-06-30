@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+
+{% block content %}
+  <section class="hero">
+    <p class="eyebrow">Import</p>
+    <h1>上傳履歷</h1>
+    <p class="lead">先把履歷檔案放進本機工作區，後續會接上文字抽取與 AI 結構化解析。</p>
+  </section>
+
+  <section class="panel">
+    {% if status == workspace_status.NO_WORKSPACE %}
+      <h2>需要先建立工作區</h2>
+      <p>目前找不到本機工作區。請先建立工作區，再上傳履歷檔案。</p>
+      <div class="actions">
+        <a class="button" href="/workspace">建立工作區</a>
+        <a class="button button-secondary" href="/">返回首頁</a>
+      </div>
+    {% else %}
+      <h2>選擇履歷檔案</h2>
+      <p>支援格式規劃為 PDF / DOCX / TXT / Markdown。MVP 下一步會把檔案保存到 <code>evidence/files</code> 並建立來源紀錄。</p>
+
+      {% if uploaded_filename %}
+        <div class="notice">
+          已收到檔案：<strong>{{ uploaded_filename }}</strong>。檔案保存與解析流程尚待下一步實作。
+        </div>
+      {% endif %}
+
+      <form class="upload-form" method="post" action="/import/files" enctype="multipart/form-data">
+        <label class="file-field">
+          <span>履歷檔案</span>
+          <input name="resume_file" type="file" accept=".pdf,.docx,.txt,.md,.markdown" required>
+        </label>
+        <div class="actions">
+          <button class="button" type="submit">上傳履歷</button>
+          <a class="button button-secondary" href="/">返回首頁</a>
+        </div>
+      </form>
+    {% endif %}
+  </section>
+{% endblock %}
+

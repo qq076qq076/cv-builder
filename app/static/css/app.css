@@ -80,3 +80,31 @@ h2 {
   background: #ffffff;
   color: #172033;
 }
+
+.upload-form {
+  margin-top: 24px;
+}
+
+.file-field {
+  display: grid;
+  gap: 8px;
+  color: #172033;
+  font-weight: 700;
+}
+
+.file-field input {
+  max-width: 100%;
+  padding: 12px;
+  border: 1px solid #d8deea;
+  border-radius: 6px;
+  background: #ffffff;
+}
+
+.notice {
+  margin-top: 20px;
+  padding: 12px 14px;
+  border: 1px solid #b7d7c2;
+  border-radius: 6px;
+  background: #edf8f0;
+  color: #1f5d35;
+}
