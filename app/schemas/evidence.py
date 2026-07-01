@@ -13,6 +13,8 @@ class EvidenceSource(BaseModel):
     original_filename: str = Field(alias="originalFilename")
     content_type: str | None = Field(default=None, alias="contentType")
     size_bytes: int = Field(alias="sizeBytes")
+    extracted_text_path: str | None = Field(default=None, alias="extractedTextPath")
+    extraction_status: str = Field(default="not_supported", alias="extractionStatus")
     created_at: datetime = Field(alias="createdAt")
 
     model_config = {"populate_by_name": True}
@@ -23,4 +25,3 @@ class EvidenceSourceCollection(BaseModel):
     sources: list[EvidenceSource] = Field(default_factory=list)
 
     model_config = {"populate_by_name": True}
-

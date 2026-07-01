@@ -27,6 +27,7 @@ class WorkspaceRouteTest(unittest.TestCase):
             self.assertEqual(response.status_code, 303)
             self.assertEqual(response.headers["location"], "/")
             self.assertTrue((workspace / "evidence/files").is_dir())
+            self.assertTrue((workspace / "evidence/extracted").is_dir())
             self.assertTrue((workspace / "jobs").is_dir())
             self.assertTrue((workspace / "outputs").is_dir())
             self.assertTrue((workspace / "versions").is_dir())
@@ -40,4 +41,3 @@ class WorkspaceRouteTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-

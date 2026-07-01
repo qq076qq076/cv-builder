@@ -29,8 +29,25 @@
             保存位置：<code>{{ saved_source.path }}</code>
             <br>
             檔案大小：{{ saved_source.size_bytes }} bytes
+            <br>
+            抽取狀態：{{ saved_source.extraction_status }}
+            {% if saved_source.extracted_text_path %}
+              <br>
+              文字位置：<code>{{ saved_source.extracted_text_path }}</code>
+            {% endif %}
           {% endif %}
         </div>
+
+        {% if text_preview %}
+          <section class="preview-block">
+            <h3>文字預覽</h3>
+            <pre>{{ text_preview }}</pre>
+          </section>
+        {% elif saved_source and saved_source.extraction_status == "not_supported" %}
+          <div class="notice notice-muted">
+            這個檔案格式目前已保存，但尚未支援文字抽取。下一步可加入 PDF / DOCX parser。
+          </div>
+        {% endif %}
       {% endif %}
 
       <form class="upload-form" method="post" action="/import/files" enctype="multipart/form-data">

@@ -29,7 +29,7 @@ def get_workspace_status(workspace_path: Path) -> WorkspaceStatus:
 
 
 def ensure_workspace_dirs(workspace_path: Path) -> None:
-    for relative_path in ("evidence/files", "jobs", "outputs", "versions"):
+    for relative_path in ("evidence/files", "evidence/extracted", "jobs", "outputs", "versions"):
         (workspace_path / relative_path).mkdir(parents=True, exist_ok=True)
 
 
@@ -77,4 +77,3 @@ def _has_value(value: Any) -> bool:
     if isinstance(value, (list, dict, tuple, set)):
         return len(value) > 0
     return True
-

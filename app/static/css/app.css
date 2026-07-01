@@ -108,3 +108,30 @@ h2 {
   background: #edf8f0;
   color: #1f5d35;
 }
+
+.notice-muted {
+  border-color: #d8deea;
+  background: #f3f5f9;
+  color: #3c465a;
+}
+
+.preview-block {
+  margin-top: 20px;
+}
+
+.preview-block h3 {
+  margin: 0 0 10px;
+  font-size: 18px;
+}
+
+.preview-block pre {
+  max-height: 320px;
+  overflow: auto;
+  margin: 0;
+  padding: 16px;
+  border: 1px solid #d8deea;
+  border-radius: 6px;
+  background: #101828;
+  color: #f5f7fb;
+  white-space: pre-wrap;
+}

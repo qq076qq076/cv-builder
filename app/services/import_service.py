@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 
+from app.importers.text import can_extract_text, extract_text_from_bytes
 from app.schemas.evidence import EvidenceSource
 from app.storage.evidence import EvidenceRepository
 from app.storage.workspace import ensure_workspace_dirs
@@ -15,6 +16,7 @@ from app.storage.workspace import ensure_workspace_dirs
 class SavedUpload:
     source: EvidenceSource
     saved_path: Path
+    extracted_text: str | None = None
 
 
 class ImportService:
@@ -38,6 +40,19 @@ class ImportService:
         saved_path.parent.mkdir(parents=True, exist_ok=True)
         saved_path.write_bytes(content)
 
+        extracted_text_path: str | None = None
+        extraction_status = "not_supported"
+        extracted_text: str | None = None
+
+        if can_extract_text(filename):
+            extracted_text = extract_text_from_bytes(content)
+            extracted_relative_path = Path("evidence/extracted") / f"{source_id}.txt"
+            extracted_path = self.workspace_path / extracted_relative_path
+            extracted_path.parent.mkdir(parents=True, exist_ok=True)
+            extracted_path.write_text(extracted_text, encoding="utf-8")
+            extracted_text_path = extracted_relative_path.as_posix()
+            extraction_status = "completed"
+
         source = EvidenceSource(
             id=source_id,
             label=filename,
@@ -45,11 +60,13 @@ class ImportService:
             originalFilename=filename,
             contentType=content_type,
             sizeBytes=len(content),
+            extractedTextPath=extracted_text_path,
+            extractionStatus=extraction_status,
             createdAt=datetime.now(timezone.utc),
         )
         self.evidence_repository.add_source(source)
 
-        return SavedUpload(source=source, saved_path=saved_path)
+        return SavedUpload(source=source, saved_path=saved_path, extracted_text=extracted_text)
 
 
 def _safe_filename(filename: str) -> str:
@@ -57,4 +74,3 @@ def _safe_filename(filename: str) -> str:
     normalized = re.sub(r"[^A-Za-z0-9._-]+", "-", path_name)
     normalized = normalized.strip(".-")
     return normalized or "upload"
-

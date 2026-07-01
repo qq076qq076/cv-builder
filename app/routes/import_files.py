@@ -28,6 +28,7 @@ def import_page(request: Request) -> HTMLResponse:
             "workspace_status": WorkspaceStatus,
             "uploaded_filename": None,
             "saved_source": None,
+            "text_preview": None,
         },
     )
 
@@ -52,5 +53,16 @@ async def upload_file(request: Request, resume_file: UploadFile = File(...)) -> 
             "workspace_status": WorkspaceStatus,
             "uploaded_filename": resume_file.filename,
             "saved_source": saved_upload.source,
+            "text_preview": _preview_text(saved_upload.extracted_text),
         },
     )
+
+
+def _preview_text(text: str | None, limit: int = 1200) -> str | None:
+    if text is None:
+        return None
+
+    normalized = text.strip()
+    if len(normalized) <= limit:
+        return normalized
+    return f"{normalized[:limit]}..."
