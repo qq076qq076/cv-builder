@@ -1,3 +1,4 @@
+import json
 import os
 import tempfile
 import unittest
@@ -74,6 +75,63 @@ class RoleRouteTest(unittest.TestCase):
             self.assertEqual(response.status_code, 200)
             self.assertIn("個人資訊", response.text)
             self.assertIn("Walker Lin", response.text)
+
+    def test_create_job_route_writes_role_job(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            workspace = Path(tmpdir) / "workspace"
+            RoleService(workspace).create_role("Walker")
+
+            response = self._client_for(workspace).post(
+                "/roles/walker/jobs",
+                data={"job_url": "https://jobs.example.com/senior-frontend"},
+                follow_redirects=False,
+            )
+
+            self.assertEqual(response.status_code, 303)
+            self.assertEqual(response.headers["location"], "/roles/walker#jobs")
+            self.assertTrue((workspace / "walker/jobs/jobs.json").is_file())
+
+    def test_role_detail_lists_tracked_jobs(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            workspace = Path(tmpdir) / "workspace"
+            role_service = RoleService(workspace)
+            role_service.create_role("Walker")
+            role_service.save_profile("walker", RoleProfile(name="Walker Lin"))
+            client = self._client_for(workspace)
+            client.post(
+                "/roles/walker/jobs",
+                data={"job_url": "https://jobs.example.com/senior-frontend"},
+            )
+
+            response = client.get("/roles/walker")
+
+            self.assertEqual(response.status_code, 200)
+            self.assertIn("職缺追蹤清單", response.text)
+            self.assertIn("Senior Frontend", response.text)
+
+    def test_generate_job_output_route_writes_markdown(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            workspace = Path(tmpdir) / "workspace"
+            RoleService(workspace).create_role("Walker")
+            self._client_for(workspace).post(
+                "/roles/walker/jobs",
+                data={"job_url": "https://jobs.example.com/senior-frontend"},
+            )
+            jobs_path = workspace / "walker/jobs/jobs.json"
+            job_id = json.loads(jobs_path.read_text(encoding="utf-8"))["jobs"][0]["id"]
+
+            response = self._client_for(workspace).post(
+                f"/roles/walker/jobs/{job_id}/generate",
+                data={"kind": "resume"},
+                follow_redirects=False,
+            )
+
+            self.assertEqual(response.status_code, 303)
+            self.assertEqual(
+                response.headers["location"],
+                f"/roles/walker?generated_output=outputs/{job_id}-resume.md#jobs",
+            )
+            self.assertTrue((workspace / f"walker/outputs/{job_id}-resume.md").is_file())
 
     def test_normalize_source_without_api_key_shows_message(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:

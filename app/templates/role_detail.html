@@ -57,11 +57,80 @@
     {% else %}
       <div class="role-layout">
         <div class="role-main-column">
+          <section class="app-panel role-timeline-panel">
+            <div class="scan-line" aria-hidden="true"></div>
+            <div class="app-panel-heading">
+              <h2>工作經歷</h2>
+              <span>Experience timeline</span>
+            </div>
+            {% if resume.experiences %}
+              <div class="timeline-list">
+                {% for item in resume.experiences %}
+                  <article>
+                    <span>{{ item.start_date }}{% if item.end_date %} - {{ item.end_date }}{% endif %}</span>
+                    <h4>{{ item.title }}{% if item.company %} @ {{ item.company }}{% endif %}</h4>
+                    {% if item.summary %}<p>{{ item.summary }}</p>{% endif %}
+                    {% if item.achievements %}
+                      <ul>
+                        {% for achievement in item.achievements %}
+                          <li>{{ achievement }}</li>
+                        {% endfor %}
+                      </ul>
+                    {% endif %}
+                  </article>
+                {% endfor %}
+              </div>
+            {% else %}
+              <p>尚未解析工作經歷。請重新解析履歷或手動編輯個人資訊。</p>
+            {% endif %}
+          </section>
+
           <section class="app-panel">
             <div class="app-panel-heading">
-              <h2>個人資訊</h2>
-              <span>可手動編輯並回寫 evidence/profile.json</span>
+              <h2>學歷與證照</h2>
+              <span>Education & certificates</span>
             </div>
+            <div class="education-grid">
+              {% for item in resume.education %}
+                <article>
+                  <h4>{{ item.degree or item.major or item.school }}</h4>
+                  <p>{{ item.school }}{% if item.start_date or item.end_date %} // {{ item.start_date }}{% if item.end_date %} - {{ item.end_date }}{% endif %}{% endif %}</p>
+                </article>
+              {% endfor %}
+              {% for item in resume.certificates %}
+                <article>
+                  <h4>{{ item.name }}</h4>
+                  <p>{{ item.issuer }}{% if item.date %} // {{ item.date }}{% endif %}</p>
+                </article>
+              {% endfor %}
+              {% if not resume.education and not resume.certificates %}
+                <p>尚未解析學歷或證照。</p>
+              {% endif %}
+            </div>
+          </section>
+
+          {% if resume.projects %}
+            <section class="app-panel">
+              <div class="app-panel-heading">
+                <h2>專案</h2>
+                <span>Projects</span>
+              </div>
+              <div class="compact-list">
+                {% for item in resume.projects %}
+                  <article>
+                    <h4>{{ item.name }}{% if item.role %} - {{ item.role }}{% endif %}</h4>
+                    {% if item.description %}<p>{{ item.description }}</p>{% endif %}
+                    {% if item.outcomes %}
+                      <p>{{ " / ".join(item.outcomes) }}</p>
+                    {% endif %}
+                  </article>
+                {% endfor %}
+              </div>
+            </section>
+          {% endif %}
+
+          <details class="app-panel profile-edit-panel">
+            <summary>手動編輯個人資訊</summary>
             <form class="app-form profile-form" method="post" action="/roles/{{ role.id }}/profile">
               <label>
                 <span>姓名</span>
@@ -84,43 +153,7 @@
                 <a class="app-button app-button-secondary" href="/roles/{{ role.id }}/import">上傳履歷</a>
               </div>
             </form>
-          </section>
-
-          {% if resume.has_content() %}
-            <section class="app-panel">
-              <div class="app-panel-heading">
-                <h2>履歷資料</h2>
-                <span>Normalized resume</span>
-              </div>
-              <div class="resume-summary">
-                {% if resume.title %}<p><strong>職稱：</strong>{{ resume.title }}</p>{% endif %}
-                {% if resume.summary %}<p><strong>摘要：</strong>{{ resume.summary }}</p>{% endif %}
-                {% if resume.experiences %}
-                  <h3>工作經歷</h3>
-                  <div class="timeline-list">
-                    {% for item in resume.experiences %}
-                      <article>
-                        <span>{{ item.start_date }}{% if item.end_date %} - {{ item.end_date }}{% endif %}</span>
-                        <h4>{{ item.title }}{% if item.company %} @ {{ item.company }}{% endif %}</h4>
-                        {% if item.summary %}<p>{{ item.summary }}</p>{% endif %}
-                      </article>
-                    {% endfor %}
-                  </div>
-                {% endif %}
-                {% if resume.projects %}
-                  <h3>專案</h3>
-                  <div class="compact-list">
-                    {% for item in resume.projects %}
-                      <article>
-                        <h4>{{ item.name }}{% if item.role %} - {{ item.role }}{% endif %}</h4>
-                        {% if item.description %}<p>{{ item.description }}</p>{% endif %}
-                      </article>
-                    {% endfor %}
-                  </div>
-                {% endif %}
-              </div>
-            </section>
-          {% endif %}
+          </details>
         </div>
 
         <aside class="role-side-column">
@@ -158,6 +191,20 @@
             </div>
           </section>
 
+          {% if resume.languages %}
+            <section class="app-panel">
+              <div class="app-panel-heading">
+                <h2>語言能力</h2>
+                <span>Languages</span>
+              </div>
+              <div class="contact-list">
+                {% for language in resume.languages %}
+                  <p>{{ language.name }}{% if language.proficiency %} // {{ language.proficiency }}{% endif %}</p>
+                {% endfor %}
+              </div>
+            </section>
+          {% endif %}
+
           <section class="app-panel">
             <div class="app-panel-heading">
               <h2>AI 匹配強度分析</h2>
@@ -173,6 +220,50 @@
           </section>
         </aside>
       </div>
+
+      <section class="app-panel app-section job-tracking-panel" id="jobs">
+        <div class="app-panel-heading">
+          <h2>職缺追蹤清單</h2>
+          <span>Target jobs</span>
+        </div>
+        {% if generated_output %}
+          <div class="app-notice">
+            已生成輸出檔：<code>{{ generated_output }}</code>
+          </div>
+        {% endif %}
+        <form class="job-create-form" method="post" action="/roles/{{ role.id }}/jobs">
+          <label>
+            <span>新增職缺網址</span>
+            <input name="job_url" type="url" placeholder="https://example.com/jobs/frontend" required>
+          </label>
+          <button class="app-button app-button-secondary" type="submit">新增職缺網址</button>
+        </form>
+
+        <div class="job-list">
+          {% for job in jobs %}
+            <article class="job-item">
+              <div class="job-company-badge">{{ job.company[:1]|upper if job.company else "J" }}</div>
+              <div class="job-item-main">
+                <h3>{{ job.title }}</h3>
+                <p>{{ job.company }} // {{ job.url }}</p>
+              </div>
+              <span class="job-status">觀察中</span>
+              <div class="job-actions">
+                <form method="post" action="/roles/{{ role.id }}/jobs/{{ job.id }}/generate">
+                  <input name="kind" type="hidden" value="resume">
+                  <button class="app-button app-button-secondary" type="submit">生成專用履歷</button>
+                </form>
+                <form method="post" action="/roles/{{ role.id }}/jobs/{{ job.id }}/generate">
+                  <input name="kind" type="hidden" value="cover_letter">
+                  <button class="app-button app-button-secondary" type="submit">生成推薦信</button>
+                </form>
+              </div>
+            </article>
+          {% else %}
+            <p>尚未新增職缺。貼上職缺網址後即可追蹤，並生成對應輸出草稿。</p>
+          {% endfor %}
+        </div>
+      </section>
     {% endif %}
 
     <section class="app-panel app-section">

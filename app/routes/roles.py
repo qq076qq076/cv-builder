@@ -6,6 +6,7 @@ from fastapi.templating import Jinja2Templates
 
 from app.config import get_settings
 from app.schemas.role import RoleProfile
+from app.services.job_service import JobService
 from app.services.role_service import RoleService
 from app.services.resume_normalization_service import ResumeNormalizationService
 from app.storage.evidence import EvidenceRepository
@@ -23,7 +24,11 @@ def create_role(role_name: str = Form(...)) -> RedirectResponse:
 
 
 @router.get("/roles/{role_id}", response_class=HTMLResponse)
-def role_detail(request: Request, role_id: str) -> HTMLResponse:
+def role_detail(
+    request: Request,
+    role_id: str,
+    generated_output: str | None = None,
+) -> HTMLResponse:
     settings = get_settings()
     role_service = RoleService(settings.workspace_path)
     role = role_service.get_role(role_id)
@@ -38,6 +43,7 @@ def role_detail(request: Request, role_id: str) -> HTMLResponse:
     role_path = role_service.role_path(role_id)
     profile = role_service.load_profile(role_id)
     resume = ResumeRepository(role_path).load()
+    job_service = JobService(role_path)
     return templates.TemplateResponse(
         request,
         "role_detail.html",
@@ -48,6 +54,8 @@ def role_detail(request: Request, role_id: str) -> HTMLResponse:
             "resume": resume,
             "has_role_content": _has_profile_content(profile) or resume.has_content(),
             "sources": EvidenceRepository(role_path).list_sources().sources,
+            "jobs": job_service.list_jobs(),
+            "generated_output": generated_output,
             "normalization_result": None,
         },
     )
@@ -75,6 +83,40 @@ def update_role_profile(
     return RedirectResponse(f"/roles/{role_id}", status_code=status.HTTP_303_SEE_OTHER)
 
 
+@router.post("/roles/{role_id}/jobs")
+def create_role_job(role_id: str, job_url: str = Form(...)) -> RedirectResponse:
+    settings = get_settings()
+    role_service = RoleService(settings.workspace_path)
+    role = role_service.get_role(role_id)
+    if role is not None:
+        JobService(role_service.role_path(role_id)).create_job_from_url(job_url)
+    return RedirectResponse(f"/roles/{role_id}#jobs", status_code=status.HTTP_303_SEE_OTHER)
+
+
+@router.post("/roles/{role_id}/jobs/{job_id}/generate")
+def generate_role_job_output(
+    role_id: str,
+    job_id: str,
+    kind: str = Form(...),
+) -> RedirectResponse:
+    settings = get_settings()
+    role_service = RoleService(settings.workspace_path)
+    role = role_service.get_role(role_id)
+    if role is not None:
+        role_path = role_service.role_path(role_id)
+        generated_output = JobService(role_path).generate_output(
+            job_id=job_id,
+            kind=kind,
+            resume=ResumeRepository(role_path).load(),
+        )
+        if generated_output is not None:
+            return RedirectResponse(
+                f"/roles/{role_id}?generated_output={generated_output.path}#jobs",
+                status_code=status.HTTP_303_SEE_OTHER,
+            )
+    return RedirectResponse(f"/roles/{role_id}#jobs", status_code=status.HTTP_303_SEE_OTHER)
+
+
 @router.post("/roles/{role_id}/sources/{source_id}/normalize", response_class=HTMLResponse)
 def normalize_source(request: Request, role_id: str, source_id: str) -> HTMLResponse:
     settings = get_settings()
@@ -100,6 +142,7 @@ def normalize_source(request: Request, role_id: str, source_id: str) -> HTMLResp
         role_service.sync_profile_from_resume(role_id, result.resume)
     profile = role_service.load_profile(role_id)
     resume = ResumeRepository(role_path).load()
+    job_service = JobService(role_path)
 
     return templates.TemplateResponse(
         request,
@@ -111,6 +154,8 @@ def normalize_source(request: Request, role_id: str, source_id: str) -> HTMLResp
             "resume": resume,
             "has_role_content": _has_profile_content(profile) or resume.has_content(),
             "sources": EvidenceRepository(role_path).list_sources().sources,
+            "jobs": job_service.list_jobs(),
+            "generated_output": None,
             "normalization_result": result,
         },
     )
