@@ -12,10 +12,80 @@ from app.schemas.resume import NormalizedResume
 
 RESUME_PARSE_SYSTEM_PROMPT = """You normalize resume text into structured career data.
 Rules:
-- Preserve facts from the input only. Do not invent companies, dates, skills, degrees, links, or achievements.
+- Preserve facts from the input only.
+- Do not invent companies, dates, skills, degrees, links, or achievements.
 - If a field is not present, return an empty string or empty list.
 - Keep original language where possible.
 - Use concise summaries.
+- Extract every visible section. Do not stop after the header.
+- If the resume contains SKILLS, EXPERIENCE, EDUCATION, PROJECTS, or Languages sections,
+  the corresponding JSON arrays must not be empty.
+"""
+
+RESUME_JSON_TEMPLATE = """Return a JSON object with this exact shape:
+{
+  "schemaVersion": 1,
+  "sourceIds": ["<provided source id>"],
+  "name": "",
+  "title": "",
+  "summary": "",
+  "autobiography": "",
+  "contact": {
+    "email": "",
+    "phone": "",
+    "location": "",
+    "links": []
+  },
+  "skills": [],
+  "experiences": [
+    {
+      "company": "",
+      "title": "",
+      "startDate": "",
+      "endDate": "",
+      "summary": "",
+      "achievements": [],
+      "technologies": []
+    }
+  ],
+  "projects": [
+    {
+      "name": "",
+      "role": "",
+      "description": "",
+      "technologies": [],
+      "outcomes": []
+    }
+  ],
+  "education": [
+    {
+      "school": "",
+      "degree": "",
+      "major": "",
+      "startDate": "",
+      "endDate": ""
+    }
+  ],
+  "certificates": [],
+  "languages": [
+    {
+      "name": "",
+      "proficiency": ""
+    }
+  ],
+  "updatedAt": null
+}
+"""
+
+RESUME_EXTRACTION_CHECKLIST = """Extraction checklist:
+- Header: name, title, professional summary, location, email, phone, links.
+- Skills: include every listed skill, including Frontend, Backend, Tools, Languages,
+  testing, DevOps, AI tools, and design tools.
+- Experience: create one item per job. Preserve company, title, dates, summaries,
+  achievements, and technologies when mentioned.
+- Projects: create one item per project. Preserve URLs inside links/outcomes/description.
+- Education: create one item per school/degree/major.
+- Languages: extract human language proficiency such as Mandarin (Native), English (Intermediate).
 """
 
 
@@ -34,14 +104,7 @@ class OpenAIResumeParser:
             model=self.model,
             messages=[
                 {"role": "system", "content": RESUME_PARSE_SYSTEM_PROMPT},
-                {
-                    "role": "user",
-                    "content": (
-                        f"Source ID: {source_id}\n\n"
-                        "Normalize the following resume text into the requested schema:\n\n"
-                        f"{extracted_text}"
-                    ),
-                },
+                {"role": "user", "content": build_resume_parse_prompt(source_id, extracted_text)},
             ],
             response_format=NormalizedResume,
         )
@@ -61,12 +124,7 @@ class GeminiResumeParser:
     def parse(self, *, extracted_text: str, source_id: str) -> NormalizedResume:
         payload = {
             "model": self.model,
-            "input": (
-                f"{RESUME_PARSE_SYSTEM_PROMPT}\n\n"
-                f"Source ID: {source_id}\n\n"
-                "Normalize the following resume text into the requested schema:\n\n"
-                f"{extracted_text}"
-            ),
+            "input": build_resume_parse_prompt(source_id, extracted_text),
             "response_format": {
                 "type": "text",
                 "mime_type": "application/json",
@@ -163,3 +221,14 @@ def _looks_like_resume_payload(data: dict) -> bool:
         "updatedAt",
     }
     return any(field in data for field in resume_fields)
+
+
+def build_resume_parse_prompt(source_id: str, extracted_text: str) -> str:
+    return (
+        f"Source ID: {source_id}\n\n"
+        f"{RESUME_JSON_TEMPLATE}\n"
+        f"{RESUME_EXTRACTION_CHECKLIST}\n"
+        "Normalize the following resume text into the requested JSON schema. "
+        "Return only JSON, no markdown.\n\n"
+        f"{extracted_text}"
+    )

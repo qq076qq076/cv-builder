@@ -1,7 +1,7 @@
 import json
 import unittest
 
-from app.ai.resume_parser import _extract_gemini_response_json
+from app.ai.resume_parser import _extract_gemini_response_json, build_resume_parse_prompt
 
 
 class GeminiResponseParserTest(unittest.TestCase):
@@ -40,6 +40,16 @@ class GeminiResponseParserTest(unittest.TestCase):
     def test_rejects_unknown_response_shape(self) -> None:
         with self.assertRaisesRegex(RuntimeError, "missing structured JSON output"):
             _extract_gemini_response_json({"id": "interaction-1"})
+
+    def test_resume_prompt_includes_format_and_extraction_checklist(self) -> None:
+        prompt = build_resume_parse_prompt("src_1", "Walker Lin\nSKILLS\nAngular")
+
+        self.assertIn('"experiences"', prompt)
+        self.assertIn('"projects"', prompt)
+        self.assertIn("Skills: include every listed skill", prompt)
+        self.assertIn("Experience: create one item per job", prompt)
+        self.assertIn("Projects: create one item per project", prompt)
+        self.assertIn("Walker Lin", prompt)
 
 
 if __name__ == "__main__":

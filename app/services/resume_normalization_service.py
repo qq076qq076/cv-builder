@@ -41,7 +41,10 @@ class ResumeNormalizationService:
         if source is None:
             return ResumeNormalizationResult(status="not_found", message="找不到來源")
         if source.extracted_text_path is None:
-            return ResumeNormalizationResult(status="no_text", message="來源尚未完成文字抽取")
+            return ResumeNormalizationResult(
+                status="no_text",
+                message="來源尚未完成文字抽取",
+            )
         if not self.api_key and not self.gemini_api_key and self.parser is None:
             return ResumeNormalizationResult(
                 status="missing_api_key",
@@ -56,6 +59,7 @@ class ResumeNormalizationService:
         parser = self.parser or self._build_parser()
         try:
             resume = parser.parse(extracted_text=extracted_text, source_id=source.id)
+            _validate_resume_completeness(extracted_text, resume)
         except Exception as exc:
             return ResumeNormalizationResult(
                 status="failed",
@@ -70,3 +74,19 @@ class ResumeNormalizationService:
         if self.api_key:
             return OpenAIResumeParser(api_key=self.api_key, model=self.model)
         return GeminiResumeParser(api_key=self.gemini_api_key or "", model=self.gemini_model)
+
+
+def _validate_resume_completeness(extracted_text: str, resume: NormalizedResume) -> None:
+    missing = []
+    normalized_text = extracted_text.upper()
+    if "SKILLS" in normalized_text and not resume.skills:
+        missing.append("skills")
+    if "EXPERIENCE" in normalized_text and not resume.experiences:
+        missing.append("experiences")
+    if "PROJECTS" in normalized_text and not resume.projects:
+        missing.append("projects")
+    if "LANGUAGES" in normalized_text and not resume.languages:
+        missing.append("languages")
+
+    if missing:
+        raise ValueError(f"AI result missing expected sections: {', '.join(missing)}")

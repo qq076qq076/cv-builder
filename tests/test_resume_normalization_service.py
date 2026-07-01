@@ -33,6 +33,11 @@ class FakeProviderParser:
         return NormalizedResume(sourceIds=[source_id], name=self.model)
 
 
+class IncompleteParser:
+    def parse(self, *, extracted_text: str, source_id: str) -> NormalizedResume:
+        return NormalizedResume(sourceIds=[source_id], name="Walker Lin")
+
+
 class ResumeNormalizationServiceTest(unittest.TestCase):
     def test_normalize_source_saves_resume_json(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -119,11 +124,33 @@ class ResumeNormalizationServiceTest(unittest.TestCase):
             self.assertEqual(result.status, "completed")
             self.assertEqual(FakeProviderParser.calls, [("gemini-key", "gemini-model")])
 
-    def _role_with_extracted_source(self, root: Path) -> Path:
+    def test_incomplete_ai_result_fails_without_writing_resume(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            role_path = self._role_with_extracted_source(
+                Path(tmpdir),
+                extracted_text="SKILLS\nAngular\nEXPERIENCE\nEngineer\nPROJECTS\nWEBA",
+            )
+
+            result = ResumeNormalizationService(
+                role_path=role_path,
+                api_key=None,
+                model="test-model",
+                parser=IncompleteParser(),
+            ).normalize_source("src_1")
+
+            self.assertEqual(result.status, "failed")
+            self.assertIn("missing expected sections", result.message)
+            self.assertFalse((role_path / "evidence/resume.json").exists())
+
+    def _role_with_extracted_source(
+        self,
+        root: Path,
+        extracted_text: str = "Senior Python Engineer",
+    ) -> Path:
         role_path = root / "workspace/walker"
         extracted_path = role_path / "evidence/extracted/src_1.txt"
         extracted_path.parent.mkdir(parents=True)
-        extracted_path.write_text("Senior Python Engineer", encoding="utf-8")
+        extracted_path.write_text(extracted_text, encoding="utf-8")
         EvidenceRepository(role_path).add_source(
             EvidenceSource(
                 id="src_1",
