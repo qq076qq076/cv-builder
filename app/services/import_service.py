@@ -22,6 +22,12 @@ class SavedUpload:
     is_duplicate: bool = False
 
 
+@dataclass(frozen=True)
+class ExtractionResult:
+    text: str | None
+    status: str
+
+
 class ImportService:
     def __init__(self, workspace_path: Path) -> None:
         self.workspace_path = workspace_path
@@ -53,28 +59,16 @@ class ImportService:
         saved_path.parent.mkdir(parents=True, exist_ok=True)
         saved_path.write_bytes(content)
 
-        extracted_text_path: str | None = None
-        extraction_status = "not_supported"
-        extracted_text: str | None = None
-
-        if can_extract_text(filename):
-            extracted_text = extract_text_from_bytes(content)
-            extraction_status = "completed"
-        elif can_extract_pdf(filename, content_type):
-            try:
-                extracted_text = extract_text_from_pdf_bytes(content)
-            except Exception:
-                extracted_text = None
-                extraction_status = "failed"
-            else:
-                extraction_status = "completed" if extracted_text.strip() else "empty"
-
-        if extracted_text is not None:
-            extracted_relative_path = Path("evidence/extracted") / f"{source_id}.txt"
-            extracted_path = self.workspace_path / extracted_relative_path
-            extracted_path.parent.mkdir(parents=True, exist_ok=True)
-            extracted_path.write_text(extracted_text, encoding="utf-8")
-            extracted_text_path = extracted_relative_path.as_posix()
+        extraction_result = _extract_source_text(
+            filename=filename,
+            content_type=content_type,
+            content=content,
+        )
+        extracted_text_path = _write_extracted_text(
+            self.workspace_path,
+            source_id,
+            extraction_result.text,
+        )
 
         source = EvidenceSource(
             id=source_id,
@@ -85,12 +79,53 @@ class ImportService:
             sizeBytes=len(content),
             contentHash=content_hash,
             extractedTextPath=extracted_text_path,
-            extractionStatus=extraction_status,
+            extractionStatus=extraction_result.status,
             createdAt=datetime.now(timezone.utc),
         )
         self.evidence_repository.add_source(source)
 
-        return SavedUpload(source=source, saved_path=saved_path, extracted_text=extracted_text)
+        return SavedUpload(source=source, saved_path=saved_path, extracted_text=extraction_result.text)
+
+    def reprocess_source(self, source_id: str) -> SavedUpload | None:
+        ensure_workspace_dirs(self.workspace_path)
+
+        source = self.evidence_repository.get_source(source_id)
+        if source is None:
+            return None
+
+        saved_path = self.workspace_path / source.path
+        if not saved_path.is_file():
+            updated_source = source.model_copy(update={"extraction_status": "missing_file"})
+            self.evidence_repository.update_source(updated_source)
+            return SavedUpload(source=updated_source, saved_path=saved_path)
+
+        content = saved_path.read_bytes()
+        content_hash = source.content_hash or sha256(content).hexdigest()
+        extraction_result = _extract_source_text(
+            filename=source.original_filename,
+            content_type=source.content_type,
+            content=content,
+        )
+        extracted_text_path = _write_extracted_text(
+            self.workspace_path,
+            source.id,
+            extraction_result.text,
+        )
+        updated_source = source.model_copy(
+            update={
+                "content_hash": content_hash,
+                "extracted_text_path": extracted_text_path,
+                "extraction_status": extraction_result.status,
+                "size_bytes": len(content),
+            }
+        )
+        self.evidence_repository.update_source(updated_source)
+
+        return SavedUpload(
+            source=updated_source,
+            saved_path=saved_path,
+            extracted_text=extraction_result.text,
+        )
 
     def _find_existing_source(self, content_hash: str) -> EvidenceSource | None:
         source_with_hash = self.evidence_repository.find_by_content_hash(content_hash)
@@ -118,6 +153,42 @@ def _hash_file(path: Path) -> str | None:
         return None
 
     return sha256(path.read_bytes()).hexdigest()
+
+
+def _extract_source_text(
+    *,
+    filename: str,
+    content_type: str | None,
+    content: bytes,
+) -> ExtractionResult:
+    if can_extract_text(filename):
+        return ExtractionResult(text=extract_text_from_bytes(content), status="completed")
+
+    if can_extract_pdf(filename, content_type):
+        try:
+            extracted_text = extract_text_from_pdf_bytes(content)
+        except Exception:
+            return ExtractionResult(text=None, status="failed")
+
+        status = "completed" if extracted_text.strip() else "empty"
+        return ExtractionResult(text=extracted_text, status=status)
+
+    return ExtractionResult(text=None, status="not_supported")
+
+
+def _write_extracted_text(
+    workspace_path: Path,
+    source_id: str,
+    extracted_text: str | None,
+) -> str | None:
+    if extracted_text is None:
+        return None
+
+    extracted_relative_path = Path("evidence/extracted") / f"{source_id}.txt"
+    extracted_path = workspace_path / extracted_relative_path
+    extracted_path.parent.mkdir(parents=True, exist_ok=True)
+    extracted_path.write_text(extracted_text, encoding="utf-8")
+    return extracted_relative_path.as_posix()
 
 
 def _read_existing_extracted_text(

@@ -62,6 +62,29 @@
         {% endif %}
       {% endif %}
 
+      {% if reprocessed_source %}
+        <div class="notice">
+          已重新處理來源：<code>{{ reprocessed_source.id }}</code>
+          <br>
+          抽取狀態：{{ reprocessed_source.extraction_status }}
+          {% if reprocessed_source.extracted_text_path %}
+            <br>
+            文字位置：<code>{{ reprocessed_source.extracted_text_path }}</code>
+          {% endif %}
+        </div>
+
+        {% if text_preview %}
+          <section class="preview-block">
+            <h3>文字預覽</h3>
+            <pre>{{ text_preview }}</pre>
+          </section>
+        {% endif %}
+      {% elif reprocess_missing %}
+        <div class="notice notice-muted">
+          找不到指定來源，無法重新處理。
+        </div>
+      {% endif %}
+
       <form class="upload-form" method="post" action="/import/files" enctype="multipart/form-data">
         <label class="file-field">
           <span>履歷檔案</span>
@@ -72,6 +95,42 @@
           <a class="button button-secondary" href="/">返回首頁</a>
         </div>
       </form>
+
+      {% if sources %}
+        <section class="source-list">
+          <h2>已匯入來源</h2>
+          <div class="source-items">
+            {% for source in sources %}
+              <article class="source-item">
+                <div>
+                  <h3>{{ source.label }}</h3>
+                  <p>
+                    <code>{{ source.id }}</code>
+                    <br>
+                    原始檔：<code>{{ source.path }}</code>
+                    <br>
+                    抽取狀態：{{ source.extraction_status }}
+                    {% if source.extracted_text_path %}
+                      <br>
+                      文字檔：<code>{{ source.extracted_text_path }}</code>
+                    {% endif %}
+                    {% if not source.content_hash %}
+                      <br>
+                      <span class="source-warning">尚未記錄內容 hash</span>
+                    {% endif %}
+                  </p>
+                </div>
+
+                {% if source.extraction_status != "completed" or not source.content_hash %}
+                  <form method="post" action="/import/sources/{{ source.id }}/reprocess">
+                    <button class="button button-secondary" type="submit">重新抽取</button>
+                  </form>
+                {% endif %}
+              </article>
+            {% endfor %}
+          </div>
+        </section>
+      {% endif %}
     {% endif %}
   </section>
 {% endblock %}

@@ -135,3 +135,41 @@ h2 {
   color: #f5f7fb;
   white-space: pre-wrap;
 }
+
+.source-list {
+  margin-top: 32px;
+}
+
+.source-list h2 {
+  margin-bottom: 16px;
+}
+
+.source-items {
+  display: grid;
+  gap: 12px;
+}
+
+.source-item {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 16px;
+  border: 1px solid #d8deea;
+  border-radius: 8px;
+  background: #f9fbff;
+}
+
+.source-item h3 {
+  margin: 0 0 8px;
+  font-size: 18px;
+}
+
+.source-item p {
+  margin: 0;
+}
+
+.source-warning {
+  color: #9a5b00;
+  font-weight: 700;
+}

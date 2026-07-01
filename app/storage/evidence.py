@@ -32,6 +32,25 @@ class EvidenceRepository:
         )
         return updated
 
+    def get_source(self, source_id: str) -> EvidenceSource | None:
+        for source in self.list_sources().sources:
+            if source.id == source_id:
+                return source
+        return None
+
+    def update_source(self, source: EvidenceSource) -> EvidenceSourceCollection:
+        collection = self.list_sources()
+        updated_sources = [
+            source if existing_source.id == source.id else existing_source
+            for existing_source in collection.sources
+        ]
+        updated = EvidenceSourceCollection(sources=updated_sources)
+        atomic_write_json(
+            self.sources_path,
+            updated.model_dump(mode="json", by_alias=True),
+        )
+        return updated
+
     def find_by_content_hash(self, content_hash: str) -> EvidenceSource | None:
         for source in self.list_sources().sources:
             if source.content_hash == content_hash:

@@ -123,6 +123,42 @@ class ImportServiceTest(unittest.TestCase):
             self.assertEqual(saved_upload.source.extraction_status, "failed")
             self.assertIsNone(saved_upload.source.extracted_text_path)
 
+    def test_reprocess_source_extracts_existing_pdf_and_updates_source(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            workspace = Path(tmpdir) / "workspace"
+            existing_path = workspace / "evidence/files/src_old_resume.pdf"
+            existing_path.parent.mkdir(parents=True)
+            existing_path.write_bytes(SIMPLE_TEXT_PDF)
+            EvidenceRepository(workspace).add_source(
+                EvidenceSource(
+                    id="src_old",
+                    label="old resume",
+                    path="evidence/files/src_old_resume.pdf",
+                    originalFilename="old.pdf",
+                    contentType="application/pdf",
+                    sizeBytes=len(SIMPLE_TEXT_PDF),
+                    createdAt=datetime(2026, 7, 1, tzinfo=timezone.utc),
+                )
+            )
+
+            saved_upload = ImportService(workspace).reprocess_source("src_old")
+
+            self.assertIsNotNone(saved_upload)
+            self.assertEqual(saved_upload.source.extraction_status, "completed")
+            self.assertIsNotNone(saved_upload.source.content_hash)
+            self.assertEqual(saved_upload.source.extracted_text_path, "evidence/extracted/src_old.txt")
+            self.assertIn("Hello PDF Resume", saved_upload.extracted_text)
+
+            updated_source = EvidenceRepository(workspace).get_source("src_old")
+            self.assertEqual(updated_source.extraction_status, "completed")
+            self.assertIsNotNone(updated_source.content_hash)
+
+    def test_reprocess_missing_source_returns_none(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            workspace = Path(tmpdir) / "workspace"
+
+            self.assertIsNone(ImportService(workspace).reprocess_source("missing"))
+
 
 if __name__ == "__main__":
     unittest.main()
