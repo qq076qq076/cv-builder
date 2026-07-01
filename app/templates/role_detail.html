@@ -1,114 +1,212 @@
 {% extends "base.html" %}
 
+{% block body_class %}app-body{% endblock %}
+{% block main_class %}app-shell{% endblock %}
+
 {% block content %}
-  <section class="hero">
-    <p class="eyebrow">Role</p>
-    <h1>{{ role.name }}</h1>
-    <p class="lead">此角色資料存放在 <code>workspace/{{ role.id }}</code>。</p>
-  </section>
-
-  {% if normalization_result %}
-    <div class="notice {% if normalization_result.status != 'completed' %}notice-muted{% endif %}">
-      {% if normalization_result.status == "completed" %}
-        已解析並儲存履歷資料。
-      {% else %}
-        {{ normalization_result.message }}
-      {% endif %}
+  <header class="app-topbar">
+    <div class="app-topbar-group">
+      <a class="app-brand" href="/">RESUME_CORE_v1.0</a>
+      <span class="app-topbar-divider" aria-hidden="true"></span>
+      <span class="app-topbar-label">角色詳情</span>
     </div>
-  {% endif %}
+    <a class="app-topbar-link" href="/">返回角色列表</a>
+  </header>
 
-  {% if not has_role_content %}
-    <section class="panel">
-      <h2>尚未建立個人資訊</h2>
-      <p>請先上傳履歷，系統會抽取文字並可用 OpenAI 解析成結構化履歷資料。</p>
-      <div class="actions">
-        <a class="button" href="/roles/{{ role.id }}/import">上傳履歷</a>
-        <a class="button button-secondary" href="/">返回首頁</a>
+  <section class="app-canvas">
+    <section class="role-hero">
+      <div>
+        <p class="app-kicker">Role</p>
+        <h1>{{ role.name }}</h1>
+        <p>UID: {{ role.id }} // NODE_STATUS: {% if has_role_content %}ACTIVE{% else %}INITIALIZE{% endif %}</p>
       </div>
-    </section>
-  {% else %}
-    <section class="panel panel-wide">
-      <h2>個人資訊</h2>
-      <form class="profile-form" method="post" action="/roles/{{ role.id }}/profile">
-        <label>
-          <span>姓名</span>
-          <input name="name" value="{{ profile.name or resume.name }}" placeholder="例如：王小明">
-        </label>
-        <label>
-          <span>技能</span>
-          <textarea name="skills" rows="5" placeholder="可用換行或逗號分隔">{{ profile.skills or "\n".join(resume.skills) }}</textarea>
-        </label>
-        <label>
-          <span>職涯</span>
-          <textarea name="career" rows="8" placeholder="整理工作經歷、專案與職涯重點">{{ profile.career or resume.summary }}</textarea>
-        </label>
-        <label>
-          <span>自傳</span>
-          <textarea name="autobiography" rows="8" placeholder="補充個人特質、求職方向或自傳內容">{{ profile.autobiography or resume.autobiography }}</textarea>
-        </label>
-        <div class="actions">
-          <button class="button" type="submit">儲存資訊</button>
-          <a class="button button-secondary" href="/roles/{{ role.id }}/import">上傳履歷</a>
-          <a class="button button-secondary" href="/">返回首頁</a>
-        </div>
-      </form>
+      {% if has_role_content %}
+        <a class="app-button app-button-accent" href="/roles/{{ role.id }}/import">上傳履歷</a>
+      {% endif %}
     </section>
 
-    {% if resume.has_content() %}
-      <section class="panel panel-wide section-gap">
-        <h2>履歷資料</h2>
-        <div class="resume-summary">
-          {% if resume.title %}<p><strong>職稱：</strong>{{ resume.title }}</p>{% endif %}
-          {% if resume.summary %}<p><strong>摘要：</strong>{{ resume.summary }}</p>{% endif %}
-          {% if resume.experiences %}
-            <h3>工作經歷</h3>
-            <ul>
-              {% for item in resume.experiences %}
-                <li>{{ item.company }} - {{ item.title }} {{ item.start_date }}{% if item.end_date %} ~ {{ item.end_date }}{% endif %}</li>
-              {% endfor %}
-            </ul>
-          {% endif %}
-          {% if resume.projects %}
-            <h3>專案</h3>
-            <ul>
-              {% for item in resume.projects %}
-                <li>{{ item.name }}{% if item.role %} - {{ item.role }}{% endif %}</li>
-              {% endfor %}
-            </ul>
-          {% endif %}
+    {% if normalization_result %}
+      <div class="app-notice {% if normalization_result.status != 'completed' %}app-notice-muted{% endif %}">
+        {% if normalization_result.status == "completed" %}
+          已解析並儲存履歷資料。
+        {% else %}
+          {{ normalization_result.message }}
+        {% endif %}
+      </div>
+    {% endif %}
+
+    {% if not has_role_content %}
+      <section class="role-initialize">
+        <div class="role-stepper">
+          <span>步驟 01：個人資料注入</span>
+          <i></i>
+          <span>步驟 02：角色驗證</span>
         </div>
+        <div class="app-hero-copy">
+          <h1>初始化{{ role.name }}角色</h1>
+          <p>尚未建立個人資訊。請先上傳履歷，系統會抽取文字並可用 OpenAI 解析成結構化履歷資料。</p>
+        </div>
+        <a class="app-upload-zone" href="/roles/{{ role.id }}/import">
+          <span class="upload-zone-icon">+</span>
+          <h2>上傳履歷以初始化角色數據</h2>
+          <p>將 PDF、TXT 或 Markdown 檔案加入此角色資料夾，解析後會建立技能、職涯與自傳資料。</p>
+          <strong>上傳履歷</strong>
+          <small>workspace/{{ role.id }}</small>
+        </a>
       </section>
-    {% endif %}
-  {% endif %}
-
-  <section class="panel panel-wide section-gap">
-    <h2>Evidence 來源</h2>
-    {% if sources %}
-      <div class="source-items">
-        {% for source in sources %}
-          <article class="source-item">
-            <div>
-              <h3>{{ source.label }}</h3>
-              <p>
-                <code>{{ source.id }}</code>
-                <br>
-                抽取狀態：{{ source.extraction_status }}
-                {% if source.extracted_text_path %}
-                  <br>
-                  文字檔：<code>{{ source.extracted_text_path }}</code>
-                {% endif %}
-              </p>
-            </div>
-            {% if source.extraction_status == "completed" and source.extracted_text_path %}
-              <form method="post" action="/roles/{{ role.id }}/sources/{{ source.id }}/normalize">
-                <button class="button button-secondary" type="submit">解析成履歷資料</button>
-              </form>
-            {% endif %}
-          </article>
-        {% endfor %}
-      </div>
     {% else %}
-      <p>目前尚未匯入履歷或其他來源。</p>
+      <div class="role-layout">
+        <div class="role-main-column">
+          <section class="app-panel">
+            <div class="app-panel-heading">
+              <h2>個人資訊</h2>
+              <span>可手動編輯並回寫 evidence/profile.json</span>
+            </div>
+            <form class="app-form profile-form" method="post" action="/roles/{{ role.id }}/profile">
+              <label>
+                <span>姓名</span>
+                <input name="name" value="{{ profile.name or resume.name }}" placeholder="例如：王小明">
+              </label>
+              <label>
+                <span>技能</span>
+                <textarea name="skills" rows="5" placeholder="可用換行或逗號分隔">{{ profile.skills or "\n".join(resume.skills) }}</textarea>
+              </label>
+              <label>
+                <span>職涯</span>
+                <textarea name="career" rows="8" placeholder="整理工作經歷、專案與職涯重點">{{ profile.career or resume.summary }}</textarea>
+              </label>
+              <label>
+                <span>自傳</span>
+                <textarea name="autobiography" rows="8" placeholder="補充個人特質、求職方向或自傳內容">{{ profile.autobiography or resume.autobiography }}</textarea>
+              </label>
+              <div class="app-actions">
+                <button class="app-button app-button-primary" type="submit">儲存資訊</button>
+                <a class="app-button app-button-secondary" href="/roles/{{ role.id }}/import">上傳履歷</a>
+              </div>
+            </form>
+          </section>
+
+          {% if resume.has_content() %}
+            <section class="app-panel">
+              <div class="app-panel-heading">
+                <h2>履歷資料</h2>
+                <span>Normalized resume</span>
+              </div>
+              <div class="resume-summary">
+                {% if resume.title %}<p><strong>職稱：</strong>{{ resume.title }}</p>{% endif %}
+                {% if resume.summary %}<p><strong>摘要：</strong>{{ resume.summary }}</p>{% endif %}
+                {% if resume.experiences %}
+                  <h3>工作經歷</h3>
+                  <div class="timeline-list">
+                    {% for item in resume.experiences %}
+                      <article>
+                        <span>{{ item.start_date }}{% if item.end_date %} - {{ item.end_date }}{% endif %}</span>
+                        <h4>{{ item.title }}{% if item.company %} @ {{ item.company }}{% endif %}</h4>
+                        {% if item.summary %}<p>{{ item.summary }}</p>{% endif %}
+                      </article>
+                    {% endfor %}
+                  </div>
+                {% endif %}
+                {% if resume.projects %}
+                  <h3>專案</h3>
+                  <div class="compact-list">
+                    {% for item in resume.projects %}
+                      <article>
+                        <h4>{{ item.name }}{% if item.role %} - {{ item.role }}{% endif %}</h4>
+                        {% if item.description %}<p>{{ item.description }}</p>{% endif %}
+                      </article>
+                    {% endfor %}
+                  </div>
+                {% endif %}
+              </div>
+            </section>
+          {% endif %}
+        </div>
+
+        <aside class="role-side-column">
+          <section class="app-panel">
+            <div class="app-panel-heading">
+              <h2>專業技能</h2>
+              <span>Skill matrix</span>
+            </div>
+            <div class="tag-list">
+              {% for skill in resume.skills %}
+                <span>{{ skill }}</span>
+              {% else %}
+                {% for skill in (profile.skills or "").replace(",", "\n").splitlines() %}
+                  {% if skill.strip() %}<span>{{ skill.strip() }}</span>{% endif %}
+                {% endfor %}
+              {% endfor %}
+            </div>
+          </section>
+
+          <section class="app-panel">
+            <div class="app-panel-heading">
+              <h2>聯繫與社群</h2>
+              <span>Contact</span>
+            </div>
+            <div class="contact-list">
+              {% if resume.contact.email %}<p>{{ resume.contact.email }}</p>{% endif %}
+              {% if resume.contact.phone %}<p>{{ resume.contact.phone }}</p>{% endif %}
+              {% if resume.contact.location %}<p>{{ resume.contact.location }}</p>{% endif %}
+              {% for link in resume.contact.links %}
+                <p>{{ link }}</p>
+              {% endfor %}
+              {% if not resume.contact.email and not resume.contact.phone and not resume.contact.location and not resume.contact.links %}
+                <p>尚未解析聯絡資料。</p>
+              {% endif %}
+            </div>
+          </section>
+
+          <section class="app-panel">
+            <div class="app-panel-heading">
+              <h2>AI 匹配強度分析</h2>
+              <span>Profile score</span>
+            </div>
+            <div class="meter-track">
+              <span style="width: 85%"></span>
+            </div>
+            <div class="meter-caption">
+              <span>85% SCORE</span>
+              <span>READY</span>
+            </div>
+          </section>
+        </aside>
+      </div>
     {% endif %}
+
+    <section class="app-panel app-section">
+      <div class="app-panel-heading">
+        <h2>Evidence 來源</h2>
+        <span>Source registry</span>
+      </div>
+      {% if sources %}
+        <div class="app-source-list">
+          {% for source in sources %}
+            <article class="app-source-item">
+              <div>
+                <h3>{{ source.label }}</h3>
+                <p>
+                  <code>{{ source.id }}</code>
+                  <br>
+                  抽取狀態：{{ source.extraction_status }}
+                  {% if source.extracted_text_path %}
+                    <br>
+                    文字檔：<code>{{ source.extracted_text_path }}</code>
+                  {% endif %}
+                </p>
+              </div>
+              {% if source.extraction_status == "completed" and source.extracted_text_path %}
+                <form method="post" action="/roles/{{ role.id }}/sources/{{ source.id }}/normalize">
+                  <button class="app-button app-button-secondary" type="submit">解析成履歷資料</button>
+                </form>
+              {% endif %}
+            </article>
+          {% endfor %}
+        </div>
+      {% else %}
+        <p>目前尚未匯入履歷或其他來源。</p>
+      {% endif %}
+    </section>
   </section>
 {% endblock %}

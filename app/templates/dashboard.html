@@ -1,24 +1,24 @@
 {% extends "base.html" %}
 
-{% block body_class %}dashboard-body{% endblock %}
-{% block main_class %}dashboard-shell{% endblock %}
+{% block body_class %}app-body{% endblock %}
+{% block main_class %}app-shell{% endblock %}
 
 {% block content %}
-  <header class="dashboard-topbar">
-    <a class="dashboard-brand" href="/">RESUME_CORE_v1.0</a>
+  <header class="app-topbar">
+    <a class="app-brand" href="/">RESUME_CORE_v1.0</a>
   </header>
 
-  <section class="dashboard-canvas">
-    <div class="dashboard-hero">
-      <div class="dashboard-hero-copy">
-        <p class="dashboard-kicker">Local-first AI Career Copilot</p>
+  <section class="app-canvas">
+    <div class="app-hero">
+      <div class="app-hero-copy">
+        <p class="app-kicker">Local-first AI Career Copilot</p>
         <h1>角色管理中心</h1>
         <p>
           構建多維度的專業形象。每個角色是一個獨立資料夾，履歷、抽取文字與正規化資料都會存放在該角色底下。
         </p>
       </div>
 
-      <section class="dashboard-create-panel" id="create-role">
+      <section class="app-panel create-panel" id="create-role">
         <div class="scan-line" aria-hidden="true"></div>
         <div>
           <h2>新增角色</h2>
@@ -29,12 +29,12 @@
             {% endif %}
           </p>
         </div>
-        <form class="dashboard-create-form" method="post" action="/roles">
+        <form class="app-inline-form create-form" method="post" action="/roles">
           <label>
             <span>輸入新職位名稱</span>
             <input name="role_name" placeholder="例如：資深架構師 / 產品經理..." required>
           </label>
-          <button class="dashboard-primary-button" type="submit">
+          <button class="app-button app-button-primary" type="submit">
             <span aria-hidden="true">+</span>
             建立新角色
           </button>
@@ -42,8 +42,8 @@
       </section>
     </div>
 
-    <section class="dashboard-section">
-      <div class="dashboard-section-heading">
+    <section class="app-section">
+      <div class="app-section-heading">
         <div>
           <h2>我的職業角色</h2>
           <p>當前運行的專業矩陣與履歷資料庫</p>
@@ -56,7 +56,7 @@
 
       <div class="dashboard-role-grid">
         {% for role in roles %}
-          <a class="dashboard-role-card" href="/roles/{{ role.id }}">
+          <a class="app-panel dashboard-role-card" href="/roles/{{ role.id }}">
             <div class="role-card-menu" aria-hidden="true">...</div>
             <div class="role-card-main">
               <div class="role-card-icon">{{ loop.index }}</div>
@@ -82,7 +82,7 @@
           </a>
         {% endfor %}
 
-        <a class="dashboard-add-card" href="#create-role">
+        <a class="app-dashed-card dashboard-add-card" href="#create-role">
           <span>+</span>
           <strong>新增專業分身</strong>
           <small>擴展您的職業核心</small>
@@ -95,12 +95,12 @@
     </section>
 
     <section class="dashboard-stats">
-      <div class="dashboard-stat-card">
+      <div class="app-panel dashboard-stat-card">
         <p>已建立角色</p>
         <strong>{{ roles|length }}</strong>
         <span>workspace profiles</span>
       </div>
-      <div class="dashboard-report-card">
+      <div class="app-panel dashboard-report-card">
         <div>
           <h2>近期資料狀態</h2>
           <p>所有角色資料都存放在本機 workspace，可直接用 Git 下載後在自己的電腦執行。</p>

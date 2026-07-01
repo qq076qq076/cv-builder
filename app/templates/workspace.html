@@ -1,26 +1,42 @@
 {% extends "base.html" %}
 
-{% block content %}
-  <section class="hero">
-    <p class="eyebrow">Workspace</p>
-    <h1>本機工作區</h1>
-    <p class="lead">目前工作區路徑：<code>{{ state.workspace_path }}</code></p>
-  </section>
+{% block body_class %}app-body{% endblock %}
+{% block main_class %}app-shell{% endblock %}
 
-  <section class="panel">
-    {% if status == workspace_status.NO_WORKSPACE %}
-      <h2>建立工作區</h2>
-      <p>系統會在本機建立必要資料夾，用來保存履歷來源、職涯資料、職缺與生成輸出。</p>
-      <form class="actions" method="post" action="/workspace/create">
-        <button class="button" type="submit">建立預設工作區</button>
-        <a class="button button-secondary" href="/">返回首頁</a>
-      </form>
-    {% else %}
-      <h2>工作區已可使用</h2>
-      <p>你可以回到首頁新增角色，再進入角色上傳履歷或手動建立職涯資料。</p>
-      <div class="actions">
-        <a class="button" href="/">回到首頁</a>
+{% block content %}
+  <header class="app-topbar">
+    <div class="app-topbar-group">
+      <a class="app-brand" href="/">RESUME_CORE_v1.0</a>
+      <span class="app-topbar-divider" aria-hidden="true"></span>
+      <span class="app-topbar-label">Workspace</span>
+    </div>
+    <a class="app-topbar-link" href="/">返回首頁</a>
+  </header>
+
+  <section class="app-canvas">
+    <section class="app-hero">
+      <div class="app-hero-copy">
+        <p class="app-kicker">Workspace</p>
+        <h1>本機工作區</h1>
+        <p>目前工作區路徑：<code>{{ state.workspace_path }}</code></p>
       </div>
-    {% endif %}
+    </section>
+
+    <section class="app-panel">
+      {% if status == workspace_status.NO_WORKSPACE %}
+        <h2>建立工作區</h2>
+        <p>系統會在本機建立必要資料夾，用來保存履歷來源、職涯資料、職缺與生成輸出。</p>
+        <form class="app-actions" method="post" action="/workspace/create">
+          <button class="app-button app-button-primary" type="submit">建立預設工作區</button>
+          <a class="app-button app-button-secondary" href="/">返回首頁</a>
+        </form>
+      {% else %}
+        <h2>工作區已可使用</h2>
+        <p>你可以回到首頁新增角色，再進入角色上傳履歷或手動建立職涯資料。</p>
+        <div class="app-actions">
+          <a class="app-button app-button-primary" href="/">回到首頁</a>
+        </div>
+      {% endif %}
+    </section>
   </section>
 {% endblock %}
