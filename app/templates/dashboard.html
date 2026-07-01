@@ -1,42 +1,112 @@
 {% extends "base.html" %}
 
+{% block body_class %}dashboard-body{% endblock %}
+{% block main_class %}dashboard-shell{% endblock %}
+
 {% block content %}
-  <section class="hero">
-    <p class="eyebrow">Local-first AI Career Copilot</p>
-    <h1>角色工作區</h1>
-    <p class="lead">每個角色是一個獨立資料夾，履歷、抽取文字與正規化資料都會存放在該角色底下。</p>
-  </section>
+  <header class="dashboard-topbar">
+    <a class="dashboard-brand" href="/">RESUME_CORE_v1.0</a>
+  </header>
 
-  <section class="panel">
-    <h2>新增角色</h2>
-    <p>
-      角色名稱可自訂，例如本人、英文履歷版本、某個求職方向，或不同人的資料。
-      {% if status == workspace_status.NO_WORKSPACE %}
-        目前找不到 <code>{{ state.workspace_path }}</code>，新增角色時會自動建立 workspace。
-      {% endif %}
-    </p>
-    <form class="inline-form" method="post" action="/roles">
-      <label>
-        <span>角色名稱</span>
-        <input name="role_name" placeholder="例如：Walker" required>
-      </label>
-      <button class="button" type="submit">新增角色</button>
-    </form>
-  </section>
+  <section class="dashboard-canvas">
+    <div class="dashboard-hero">
+      <div class="dashboard-hero-copy">
+        <p class="dashboard-kicker">Local-first AI Career Copilot</p>
+        <h1>角色管理中心</h1>
+        <p>
+          構建多維度的專業形象。每個角色是一個獨立資料夾，履歷、抽取文字與正規化資料都會存放在該角色底下。
+        </p>
+      </div>
 
-  <section class="panel panel-wide section-gap">
-    <h2>現有角色</h2>
-    {% if roles %}
-      <div class="role-grid">
+      <section class="dashboard-create-panel" id="create-role">
+        <div class="scan-line" aria-hidden="true"></div>
+        <div>
+          <h2>新增角色</h2>
+          <p>
+            角色名稱可自訂，例如本人、英文履歷版本、某個求職方向，或不同人的資料。
+            {% if status == workspace_status.NO_WORKSPACE %}
+              目前找不到 <code>{{ state.workspace_path }}</code>，新增角色時會自動建立 workspace。
+            {% endif %}
+          </p>
+        </div>
+        <form class="dashboard-create-form" method="post" action="/roles">
+          <label>
+            <span>輸入新職位名稱</span>
+            <input name="role_name" placeholder="例如：資深架構師 / 產品經理..." required>
+          </label>
+          <button class="dashboard-primary-button" type="submit">
+            <span aria-hidden="true">+</span>
+            建立新角色
+          </button>
+        </form>
+      </section>
+    </div>
+
+    <section class="dashboard-section">
+      <div class="dashboard-section-heading">
+        <div>
+          <h2>我的職業角色</h2>
+          <p>當前運行的專業矩陣與履歷資料庫</p>
+        </div>
+        <div class="dashboard-view-actions" aria-hidden="true">
+          <span></span>
+          <span></span>
+        </div>
+      </div>
+
+      <div class="dashboard-role-grid">
         {% for role in roles %}
-          <a class="role-card" href="/roles/{{ role.id }}">
-            <strong>{{ role.name }}</strong>
-            <span><code>{{ role.id }}</code></span>
+          <a class="dashboard-role-card" href="/roles/{{ role.id }}">
+            <div class="role-card-menu" aria-hidden="true">...</div>
+            <div class="role-card-main">
+              <div class="role-card-icon">{{ loop.index }}</div>
+              <div>
+                <h3>{{ role.name }}</h3>
+                <p>Role ID: {{ role.id }}</p>
+              </div>
+            </div>
+            <div class="role-card-meter">
+              <div>
+                <span>資料狀態</span>
+                <strong>可進入編輯</strong>
+              </div>
+              <div class="meter-track">
+                <span style="width: 72%"></span>
+              </div>
+            </div>
+            <div class="role-card-tags">
+              <span>LOCAL</span>
+              <span>RESUME</span>
+              <span>AI READY</span>
+            </div>
           </a>
         {% endfor %}
+
+        <a class="dashboard-add-card" href="#create-role">
+          <span>+</span>
+          <strong>新增專業分身</strong>
+          <small>擴展您的職業核心</small>
+        </a>
       </div>
-    {% else %}
-      <p>目前沒有角色。請先新增一個角色，再進入角色上傳履歷。</p>
-    {% endif %}
+
+      {% if not roles %}
+        <p class="dashboard-empty-note">目前沒有角色。請先新增一個角色，再進入角色上傳履歷。</p>
+      {% endif %}
+    </section>
+
+    <section class="dashboard-stats">
+      <div class="dashboard-stat-card">
+        <p>已建立角色</p>
+        <strong>{{ roles|length }}</strong>
+        <span>workspace profiles</span>
+      </div>
+      <div class="dashboard-report-card">
+        <div>
+          <h2>近期資料狀態</h2>
+          <p>所有角色資料都存放在本機 workspace，可直接用 Git 下載後在自己的電腦執行。</p>
+        </div>
+        <a href="#create-role">建立下一個角色</a>
+      </div>
+    </section>
   </section>
 {% endblock %}
