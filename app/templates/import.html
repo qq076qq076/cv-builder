@@ -3,8 +3,8 @@
 {% block content %}
   <section class="hero">
     <p class="eyebrow">Import</p>
-    <h1>上傳履歷</h1>
-    <p class="lead">先把履歷檔案放進本機工作區，後續會接上文字抽取與 AI 結構化解析。</p>
+    <h1>上傳履歷：{{ role.name }}</h1>
+    <p class="lead">檔案會存放在此角色資料夾底下：<code>workspace/{{ role.id }}</code>。</p>
   </section>
 
   <section class="panel">
@@ -85,14 +85,14 @@
         </div>
       {% endif %}
 
-      <form class="upload-form" method="post" action="/import/files" enctype="multipart/form-data">
+      <form class="upload-form" method="post" action="/roles/{{ role.id }}/import/files" enctype="multipart/form-data">
         <label class="file-field">
           <span>履歷檔案</span>
           <input name="resume_file" type="file" accept=".pdf,.docx,.txt,.md,.markdown" required>
         </label>
         <div class="actions">
           <button class="button" type="submit">上傳履歷</button>
-          <a class="button button-secondary" href="/">返回首頁</a>
+          <a class="button button-secondary" href="/roles/{{ role.id }}">返回角色</a>
         </div>
       </form>
 
@@ -122,7 +122,7 @@
                 </div>
 
                 {% if source.extraction_status != "completed" or not source.content_hash %}
-                  <form method="post" action="/import/sources/{{ source.id }}/reprocess">
+                  <form method="post" action="/roles/{{ role.id }}/import/sources/{{ source.id }}/reprocess">
                     <button class="button button-secondary" type="submit">重新抽取</button>
                   </form>
                 {% endif %}

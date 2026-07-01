@@ -7,6 +7,7 @@ from fastapi.templating import Jinja2Templates
 from app.config import get_settings
 from app.schemas.workspace import WorkspaceStatus
 from app.services.dashboard_service import DashboardService
+from app.services.role_service import RoleService
 
 router = APIRouter()
 templates = Jinja2Templates(directory="app/templates")
@@ -16,6 +17,7 @@ templates = Jinja2Templates(directory="app/templates")
 def dashboard(request: Request) -> HTMLResponse:
     settings = get_settings()
     state = DashboardService(settings.workspace_path).get_state()
+    role_service = RoleService(settings.workspace_path)
 
     return templates.TemplateResponse(
         request,
@@ -25,5 +27,6 @@ def dashboard(request: Request) -> HTMLResponse:
             "state": state,
             "status": state.status,
             "workspace_status": WorkspaceStatus,
+            "roles": role_service.list_roles(),
         },
     )

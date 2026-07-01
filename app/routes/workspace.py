@@ -7,7 +7,6 @@ from fastapi.templating import Jinja2Templates
 from app.config import get_settings
 from app.schemas.workspace import WorkspaceStatus
 from app.services.dashboard_service import DashboardService
-from app.storage.workspace import ensure_workspace_dirs
 
 router = APIRouter()
 templates = Jinja2Templates(directory="app/templates")
@@ -33,7 +32,6 @@ def workspace(request: Request) -> HTMLResponse:
 @router.post("/workspace/create")
 def create_workspace() -> RedirectResponse:
     settings = get_settings()
-    ensure_workspace_dirs(settings.workspace_path)
+    settings.workspace_path.mkdir(parents=True, exist_ok=True)
 
     return RedirectResponse("/", status_code=status.HTTP_303_SEE_OTHER)
-

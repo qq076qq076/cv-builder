@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+
+{% block content %}
+  <section class="hero">
+    <p class="eyebrow">Role</p>
+    <h1>{{ role.name }}</h1>
+    <p class="lead">此角色資料存放在 <code>workspace/{{ role.id }}</code>。</p>
+  </section>
+
+  <section class="panel panel-wide">
+    <h2>個人資訊</h2>
+    <form class="profile-form" method="post" action="/roles/{{ role.id }}/profile">
+      <label>
+        <span>姓名</span>
+        <input name="name" value="{{ profile.name }}" placeholder="例如：王小明">
+      </label>
+      <label>
+        <span>技能</span>
+        <textarea name="skills" rows="5" placeholder="可用換行或逗號分隔">{{ profile.skills }}</textarea>
+      </label>
+      <label>
+        <span>職涯</span>
+        <textarea name="career" rows="8" placeholder="整理工作經歷、專案與職涯重點">{{ profile.career }}</textarea>
+      </label>
+      <label>
+        <span>自傳</span>
+        <textarea name="autobiography" rows="8" placeholder="補充個人特質、求職方向或自傳內容">{{ profile.autobiography }}</textarea>
+      </label>
+      <div class="actions">
+        <button class="button" type="submit">儲存資訊</button>
+        <a class="button button-secondary" href="/roles/{{ role.id }}/import">上傳履歷</a>
+        <a class="button button-secondary" href="/">返回首頁</a>
+      </div>
+    </form>
+  </section>
+
+  <section class="panel panel-wide section-gap">
+    <h2>Evidence 來源</h2>
+    {% if sources %}
+      <div class="source-items">
+        {% for source in sources %}
+          <article class="source-item">
+            <div>
+              <h3>{{ source.label }}</h3>
+              <p>
+                <code>{{ source.id }}</code>
+                <br>
+                抽取狀態：{{ source.extraction_status }}
+                {% if source.extracted_text_path %}
+                  <br>
+                  文字檔：<code>{{ source.extracted_text_path }}</code>
+                {% endif %}
+              </p>
+            </div>
+          </article>
+        {% endfor %}
+      </div>
+    {% else %}
+      <p>目前尚未匯入履歷或其他來源。</p>
+    {% endif %}
+  </section>
+{% endblock %}
+

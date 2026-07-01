@@ -26,11 +26,8 @@ class WorkspaceRouteTest(unittest.TestCase):
 
             self.assertEqual(response.status_code, 303)
             self.assertEqual(response.headers["location"], "/")
-            self.assertTrue((workspace / "evidence/files").is_dir())
-            self.assertTrue((workspace / "evidence/extracted").is_dir())
-            self.assertTrue((workspace / "jobs").is_dir())
-            self.assertTrue((workspace / "outputs").is_dir())
-            self.assertTrue((workspace / "versions").is_dir())
+            self.assertTrue(workspace.is_dir())
+            self.assertFalse((workspace / "evidence").exists())
 
     def _client_for(self, workspace: Path) -> TestClient:
         patcher = patch.dict(os.environ, {"CV_BUILDER_WORKSPACE": str(workspace)})

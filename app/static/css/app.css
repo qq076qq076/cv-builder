@@ -50,6 +50,14 @@ h2 {
   background: #ffffff;
 }
 
+.panel-wide {
+  max-width: none;
+}
+
+.section-gap {
+  margin-top: 24px;
+}
+
 .panel p {
   margin: 0;
   color: #3c465a;
@@ -172,4 +180,66 @@ h2 {
 .source-warning {
   color: #9a5b00;
   font-weight: 700;
+}
+
+.inline-form,
+.profile-form {
+  display: grid;
+  gap: 16px;
+  margin-top: 20px;
+}
+
+.inline-form {
+  grid-template-columns: minmax(220px, 1fr) auto;
+  align-items: end;
+}
+
+.inline-form label,
+.profile-form label {
+  display: grid;
+  gap: 8px;
+  color: #172033;
+  font-weight: 700;
+}
+
+input,
+textarea {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 12px;
+  border: 1px solid #d8deea;
+  border-radius: 6px;
+  color: #172033;
+  font: inherit;
+}
+
+textarea {
+  resize: vertical;
+}
+
+.role-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+}
+
+.role-card {
+  display: grid;
+  gap: 8px;
+  padding: 18px;
+  border: 1px solid #d8deea;
+  border-radius: 8px;
+  background: #f9fbff;
+  color: #172033;
+  text-decoration: none;
+}
+
+.role-card strong {
+  font-size: 18px;
+}
+
+@media (max-width: 640px) {
+  .inline-form {
+    grid-template-columns: 1fr;
+  }
 }

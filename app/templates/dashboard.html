@@ -3,45 +3,40 @@
 {% block content %}
   <section class="hero">
     <p class="eyebrow">Local-first AI Career Copilot</p>
-    <h1>職涯知識庫</h1>
-    <p class="lead">資料預設只存放在你的本機工作區。</p>
+    <h1>角色工作區</h1>
+    <p class="lead">每個角色是一個獨立資料夾，履歷、抽取文字與正規化資料都會存放在該角色底下。</p>
   </section>
 
-  {% if status == workspace_status.NO_WORKSPACE %}
-    <section class="panel">
-      <h2>尚未建立本機工作區</h2>
-      <p>目前找不到 <code>{{ state.workspace_path }}</code>。建立工作區後，就可以開始匯入履歷與建立職涯資料。</p>
-      <div class="actions">
-        <a class="button" href="/workspace">建立工作區</a>
-      </div>
-    </section>
-  {% elif status == workspace_status.EMPTY_WORKSPACE %}
-    <section class="panel">
-      <h2>開始建立你的職涯資料</h2>
-      <p>工作區已存在，但還沒有可用的職涯資料。你可以上傳履歷，或先手動輸入基本資料。</p>
-      <div class="actions">
-        <a class="button" href="/import">上傳履歷</a>
-        <a class="button button-secondary" href="/career">手動輸入</a>
-      </div>
-    </section>
-  {% elif status == workspace_status.HAS_CAREER_DATA %}
-    <section class="panel">
-      <h2>已建立職涯知識庫</h2>
-      <p>你可以繼續編輯職涯資料、貼上目標職缺，或開始生成履歷版本。</p>
-      <div class="actions">
-        <a class="button" href="/career">編輯職涯知識庫</a>
-        <a class="button button-secondary" href="/jobs">貼上目標職缺</a>
-      </div>
-    </section>
-  {% elif status == workspace_status.HAS_GENERATED_OUTPUTS %}
-    <section class="panel">
-      <h2>已有生成內容</h2>
-      <p>工作區已有職涯資料與生成輸出。你可以預覽既有履歷，或針對新職缺產生新版本。</p>
-      <div class="actions">
-        <a class="button" href="/outputs">查看生成內容</a>
-        <a class="button button-secondary" href="/jobs">針對新職缺生成</a>
-      </div>
-    </section>
-  {% endif %}
-{% endblock %}
+  <section class="panel">
+    <h2>新增角色</h2>
+    <p>
+      角色名稱可自訂，例如本人、英文履歷版本、某個求職方向，或不同人的資料。
+      {% if status == workspace_status.NO_WORKSPACE %}
+        目前找不到 <code>{{ state.workspace_path }}</code>，新增角色時會自動建立 workspace。
+      {% endif %}
+    </p>
+    <form class="inline-form" method="post" action="/roles">
+      <label>
+        <span>角色名稱</span>
+        <input name="role_name" placeholder="例如：Walker" required>
+      </label>
+      <button class="button" type="submit">新增角色</button>
+    </form>
+  </section>
 
+  <section class="panel panel-wide section-gap">
+    <h2>現有角色</h2>
+    {% if roles %}
+      <div class="role-grid">
+        {% for role in roles %}
+          <a class="role-card" href="/roles/{{ role.id }}">
+            <strong>{{ role.name }}</strong>
+            <span><code>{{ role.id }}</code></span>
+          </a>
+        {% endfor %}
+      </div>
+    {% else %}
+      <p>目前沒有角色。請先新增一個角色，再進入角色上傳履歷。</p>
+    {% endif %}
+  </section>
+{% endblock %}
