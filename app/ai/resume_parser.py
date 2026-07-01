@@ -97,7 +97,69 @@ class GeminiResumeParser:
         except URLError as exc:
             raise RuntimeError(f"Gemini API request failed: {exc.reason}") from exc
 
+        return _extract_gemini_response_json(data)
+
+
+def _extract_gemini_response_json(data: object) -> str:
+    if isinstance(data, dict):
         output_text = data.get("output_text")
-        if not isinstance(output_text, str) or not output_text.strip():
-            raise RuntimeError("Gemini API response missing output_text")
-        return output_text
+        if isinstance(output_text, str) and output_text.strip():
+            return output_text
+
+        step_text = _extract_text_from_steps(data.get("steps"))
+        if step_text is not None:
+            return step_text
+
+        if _looks_like_resume_payload(data):
+            return json.dumps(data)
+
+    raise RuntimeError("Gemini API response missing structured JSON output")
+
+
+def _extract_text_from_steps(steps: object) -> str | None:
+    if not isinstance(steps, list):
+        return None
+
+    for step in reversed(steps):
+        if not isinstance(step, dict):
+            continue
+        content = step.get("content")
+        text = _extract_text_from_content(content)
+        if text is not None:
+            return text
+
+    return None
+
+
+def _extract_text_from_content(content: object) -> str | None:
+    if isinstance(content, str) and content.strip():
+        return content
+    if not isinstance(content, list):
+        return None
+
+    parts = []
+    for item in content:
+        if isinstance(item, dict) and isinstance(item.get("text"), str):
+            parts.append(item["text"])
+    text = "".join(parts).strip()
+    return text or None
+
+
+def _looks_like_resume_payload(data: dict) -> bool:
+    resume_fields = {
+        "schemaVersion",
+        "sourceIds",
+        "name",
+        "title",
+        "summary",
+        "autobiography",
+        "contact",
+        "skills",
+        "experiences",
+        "projects",
+        "education",
+        "certificates",
+        "languages",
+        "updatedAt",
+    }
+    return any(field in data for field in resume_fields)
