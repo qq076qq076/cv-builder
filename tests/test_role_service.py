@@ -18,6 +18,7 @@ class RoleServiceTest(unittest.TestCase):
             self.assertTrue((workspace / "walker-lin/metadata.json").is_file())
             self.assertTrue((workspace / "walker-lin/evidence/files").is_dir())
             self.assertTrue((workspace / "walker-lin/evidence/profile.json").is_file())
+            self.assertFalse(service.load_profile(role.id).name)
 
     def test_list_roles_ignores_legacy_workspace_directories(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -53,4 +54,3 @@ class RoleServiceTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-

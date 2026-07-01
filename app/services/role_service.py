@@ -65,7 +65,7 @@ class RoleService:
             createdAt=datetime.now(timezone.utc),
         )
         atomic_write_json(role_path / "metadata.json", metadata.model_dump(mode="json", by_alias=True))
-        self.save_profile(role_id, RoleProfile(name=metadata.name))
+        self.save_profile(role_id, RoleProfile())
         return metadata
 
     def role_path(self, role_id: str) -> Path:
@@ -105,4 +105,3 @@ def _slugify(value: str) -> str:
     normalized = re.sub(r"[^A-Za-z0-9._-]+", "-", value.strip().lower())
     normalized = normalized.strip(".-")
     return normalized or "role"
-

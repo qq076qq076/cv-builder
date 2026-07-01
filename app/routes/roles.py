@@ -7,7 +7,9 @@ from fastapi.templating import Jinja2Templates
 from app.config import get_settings
 from app.schemas.role import RoleProfile
 from app.services.role_service import RoleService
+from app.services.resume_normalization_service import ResumeNormalizationService
 from app.storage.evidence import EvidenceRepository
+from app.storage.resume import ResumeRepository
 
 router = APIRouter()
 templates = Jinja2Templates(directory="app/templates")
@@ -34,14 +36,19 @@ def role_detail(request: Request, role_id: str) -> HTMLResponse:
         )
 
     role_path = role_service.role_path(role_id)
+    profile = role_service.load_profile(role_id)
+    resume = ResumeRepository(role_path).load()
     return templates.TemplateResponse(
         request,
         "role_detail.html",
         context={
             "request": request,
             "role": role,
-            "profile": role_service.load_profile(role_id),
+            "profile": profile,
+            "resume": resume,
+            "has_role_content": _has_profile_content(profile) or resume.has_content(),
             "sources": EvidenceRepository(role_path).list_sources().sources,
+            "normalization_result": None,
         },
     )
 
@@ -67,3 +74,50 @@ def update_role_profile(
     )
     return RedirectResponse(f"/roles/{role_id}", status_code=status.HTTP_303_SEE_OTHER)
 
+
+@router.post("/roles/{role_id}/sources/{source_id}/normalize", response_class=HTMLResponse)
+def normalize_source(request: Request, role_id: str, source_id: str) -> HTMLResponse:
+    settings = get_settings()
+    role_service = RoleService(settings.workspace_path)
+    role = role_service.get_role(role_id)
+    if role is None:
+        return templates.TemplateResponse(
+            request,
+            "role_not_found.html",
+            context={"request": request, "role_id": role_id},
+            status_code=404,
+        )
+
+    role_path = role_service.role_path(role_id)
+    result = ResumeNormalizationService(
+        role_path=role_path,
+        api_key=settings.openai_api_key,
+        model=settings.openai_model,
+    ).normalize_source(source_id)
+    profile = role_service.load_profile(role_id)
+    resume = ResumeRepository(role_path).load()
+
+    return templates.TemplateResponse(
+        request,
+        "role_detail.html",
+        context={
+            "request": request,
+            "role": role,
+            "profile": profile,
+            "resume": resume,
+            "has_role_content": _has_profile_content(profile) or resume.has_content(),
+            "sources": EvidenceRepository(role_path).list_sources().sources,
+            "normalization_result": result,
+        },
+    )
+
+
+def _has_profile_content(profile: RoleProfile) -> bool:
+    return any(
+        [
+            profile.name.strip(),
+            profile.skills.strip(),
+            profile.career.strip(),
+            profile.autobiography.strip(),
+        ]
+    )

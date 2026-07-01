@@ -7,32 +7,79 @@
     <p class="lead">此角色資料存放在 <code>workspace/{{ role.id }}</code>。</p>
   </section>
 
-  <section class="panel panel-wide">
-    <h2>個人資訊</h2>
-    <form class="profile-form" method="post" action="/roles/{{ role.id }}/profile">
-      <label>
-        <span>姓名</span>
-        <input name="name" value="{{ profile.name }}" placeholder="例如：王小明">
-      </label>
-      <label>
-        <span>技能</span>
-        <textarea name="skills" rows="5" placeholder="可用換行或逗號分隔">{{ profile.skills }}</textarea>
-      </label>
-      <label>
-        <span>職涯</span>
-        <textarea name="career" rows="8" placeholder="整理工作經歷、專案與職涯重點">{{ profile.career }}</textarea>
-      </label>
-      <label>
-        <span>自傳</span>
-        <textarea name="autobiography" rows="8" placeholder="補充個人特質、求職方向或自傳內容">{{ profile.autobiography }}</textarea>
-      </label>
+  {% if normalization_result %}
+    <div class="notice {% if normalization_result.status != 'completed' %}notice-muted{% endif %}">
+      {% if normalization_result.status == "completed" %}
+        已解析並儲存履歷資料。
+      {% else %}
+        {{ normalization_result.message }}
+      {% endif %}
+    </div>
+  {% endif %}
+
+  {% if not has_role_content %}
+    <section class="panel">
+      <h2>尚未建立個人資訊</h2>
+      <p>請先上傳履歷，系統會抽取文字並可用 OpenAI 解析成結構化履歷資料。</p>
       <div class="actions">
-        <button class="button" type="submit">儲存資訊</button>
-        <a class="button button-secondary" href="/roles/{{ role.id }}/import">上傳履歷</a>
+        <a class="button" href="/roles/{{ role.id }}/import">上傳履歷</a>
         <a class="button button-secondary" href="/">返回首頁</a>
       </div>
-    </form>
-  </section>
+    </section>
+  {% else %}
+    <section class="panel panel-wide">
+      <h2>個人資訊</h2>
+      <form class="profile-form" method="post" action="/roles/{{ role.id }}/profile">
+        <label>
+          <span>姓名</span>
+          <input name="name" value="{{ profile.name or resume.name }}" placeholder="例如：王小明">
+        </label>
+        <label>
+          <span>技能</span>
+          <textarea name="skills" rows="5" placeholder="可用換行或逗號分隔">{{ profile.skills or "\n".join(resume.skills) }}</textarea>
+        </label>
+        <label>
+          <span>職涯</span>
+          <textarea name="career" rows="8" placeholder="整理工作經歷、專案與職涯重點">{{ profile.career or resume.summary }}</textarea>
+        </label>
+        <label>
+          <span>自傳</span>
+          <textarea name="autobiography" rows="8" placeholder="補充個人特質、求職方向或自傳內容">{{ profile.autobiography or resume.autobiography }}</textarea>
+        </label>
+        <div class="actions">
+          <button class="button" type="submit">儲存資訊</button>
+          <a class="button button-secondary" href="/roles/{{ role.id }}/import">上傳履歷</a>
+          <a class="button button-secondary" href="/">返回首頁</a>
+        </div>
+      </form>
+    </section>
+
+    {% if resume.has_content() %}
+      <section class="panel panel-wide section-gap">
+        <h2>履歷資料</h2>
+        <div class="resume-summary">
+          {% if resume.title %}<p><strong>職稱：</strong>{{ resume.title }}</p>{% endif %}
+          {% if resume.summary %}<p><strong>摘要：</strong>{{ resume.summary }}</p>{% endif %}
+          {% if resume.experiences %}
+            <h3>工作經歷</h3>
+            <ul>
+              {% for item in resume.experiences %}
+                <li>{{ item.company }} - {{ item.title }} {{ item.start_date }}{% if item.end_date %} ~ {{ item.end_date }}{% endif %}</li>
+              {% endfor %}
+            </ul>
+          {% endif %}
+          {% if resume.projects %}
+            <h3>專案</h3>
+            <ul>
+              {% for item in resume.projects %}
+                <li>{{ item.name }}{% if item.role %} - {{ item.role }}{% endif %}</li>
+              {% endfor %}
+            </ul>
+          {% endif %}
+        </div>
+      </section>
+    {% endif %}
+  {% endif %}
 
   <section class="panel panel-wide section-gap">
     <h2>Evidence 來源</h2>
@@ -52,6 +99,11 @@
                 {% endif %}
               </p>
             </div>
+            {% if source.extraction_status == "completed" and source.extracted_text_path %}
+              <form method="post" action="/roles/{{ role.id }}/sources/{{ source.id }}/normalize">
+                <button class="button button-secondary" type="submit">解析成履歷資料</button>
+              </form>
+            {% endif %}
           </article>
         {% endfor %}
       </div>
@@ -60,4 +112,3 @@
     {% endif %}
   </section>
 {% endblock %}
-
