@@ -47,8 +47,14 @@ class ResumeNormalizationService:
 
         extracted_text = extracted_path.read_text(encoding="utf-8")
         parser = self.parser or OpenAIResumeParser(api_key=self.api_key or "", model=self.model)
-        resume = parser.parse(extracted_text=extracted_text, source_id=source.id)
+        try:
+            resume = parser.parse(extracted_text=extracted_text, source_id=source.id)
+        except Exception as exc:
+            return ResumeNormalizationResult(
+                status="failed",
+                message=f"履歷解析失敗：{exc}",
+            )
+
         saved_resume = self.resume_repository.save(resume)
 
         return ResumeNormalizationResult(status="completed", resume=saved_resume)
-

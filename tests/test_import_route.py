@@ -8,11 +8,27 @@ from unittest.mock import patch
 from fastapi.testclient import TestClient
 
 from app.schemas.evidence import EvidenceSource
+from app.schemas.resume import NormalizedResume
 from app.storage.evidence import EvidenceRepository
+from app.storage.resume import ResumeRepository
 from app.storage.workspace import ensure_workspace_dirs
 from app.main import create_app
 from app.services.role_service import RoleService
 from tests.test_pdf_importer import SIMPLE_TEXT_PDF
+
+
+class FakeOpenAIResumeParser:
+    def __init__(self, *, api_key: str, model: str) -> None:
+        self.api_key = api_key
+        self.model = model
+
+    def parse(self, *, extracted_text: str, source_id: str) -> NormalizedResume:
+        return NormalizedResume(
+            sourceIds=[source_id],
+            name="Walker Lin",
+            skills=["Python", "FastAPI"],
+            summary=extracted_text,
+        )
 
 
 class ImportRouteTest(unittest.TestCase):
@@ -54,6 +70,28 @@ class ImportRouteTest(unittest.TestCase):
             self.assertTrue((workspace / "walker/evidence/sources.json").is_file())
             self.assertEqual(len(list((workspace / "walker/evidence/files").iterdir())), 1)
             self.assertEqual(len(list((workspace / "walker/evidence/extracted").iterdir())), 1)
+
+    def test_upload_file_auto_normalizes_and_syncs_profile(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            workspace = Path(tmpdir) / "workspace"
+            RoleService(workspace).create_role("Walker")
+
+            with patch(
+                "app.services.resume_normalization_service.OpenAIResumeParser",
+                FakeOpenAIResumeParser,
+            ):
+                response = self._client_for(workspace, openai_api_key="test-key").post(
+                    "/roles/walker/import/files",
+                    files={"resume_file": ("resume.txt", b"Senior Python Engineer", "text/plain")},
+                )
+
+            self.assertEqual(response.status_code, 200)
+            self.assertIn("已透過 AI 解析並回寫履歷資料", response.text)
+            resume = ResumeRepository(workspace / "walker").load()
+            self.assertEqual(resume.name, "Walker Lin")
+            profile = RoleService(workspace).load_profile("walker")
+            self.assertEqual(profile.name, "Walker Lin")
+            self.assertEqual(profile.skills, "Python\nFastAPI")
 
     def test_upload_pdf_shows_unsupported_extraction_message(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -121,8 +159,14 @@ class ImportRouteTest(unittest.TestCase):
             self.assertEqual(updated_source.extraction_status, "completed")
             self.assertIsNotNone(updated_source.content_hash)
 
-    def _client_for(self, workspace: Path) -> TestClient:
-        patcher = patch.dict(os.environ, {"CV_BUILDER_WORKSPACE": str(workspace)})
+    def _client_for(self, workspace: Path, openai_api_key: str = "") -> TestClient:
+        patcher = patch.dict(
+            os.environ,
+            {
+                "CV_BUILDER_WORKSPACE": str(workspace),
+                "OPENAI_API_KEY": openai_api_key,
+            },
+        )
         patcher.start()
         self.addCleanup(patcher.stop)
         return TestClient(create_app())

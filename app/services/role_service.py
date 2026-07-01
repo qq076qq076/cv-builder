@@ -5,6 +5,7 @@ import re
 from datetime import datetime, timezone
 from pathlib import Path
 
+from app.schemas.resume import NormalizedResume
 from app.schemas.role import RoleMetadata, RoleProfile
 from app.storage.atomic import atomic_write_json
 from app.storage.workspace import ensure_workspace_dirs
@@ -91,6 +92,16 @@ class RoleService:
         )
         return updated_profile
 
+    def sync_profile_from_resume(self, role_id: str, resume: NormalizedResume) -> RoleProfile:
+        profile = self.load_profile(role_id)
+        synced_profile = RoleProfile(
+            name=profile.name or resume.name,
+            skills=profile.skills or "\n".join(resume.skills),
+            career=profile.career or _resume_career_text(resume),
+            autobiography=profile.autobiography or resume.autobiography,
+        )
+        return self.save_profile(role_id, synced_profile)
+
     def _unique_role_id(self, base_role_id: str) -> str:
         role_id = base_role_id or "role"
         candidate = role_id
@@ -105,3 +116,24 @@ def _slugify(value: str) -> str:
     normalized = re.sub(r"[^A-Za-z0-9._-]+", "-", value.strip().lower())
     normalized = normalized.strip(".-")
     return normalized or "role"
+
+
+def _resume_career_text(resume: NormalizedResume) -> str:
+    parts = []
+    if resume.summary.strip():
+        parts.append(resume.summary.strip())
+
+    for item in resume.experiences:
+        title = item.title.strip()
+        company = item.company.strip()
+        period = " - ".join(value for value in [item.start_date, item.end_date] if value)
+        heading = " @ ".join(value for value in [title, company] if value)
+        line = heading
+        if period:
+            line = f"{line} ({period})" if line else period
+        if item.summary.strip():
+            line = f"{line}\n{item.summary.strip()}" if line else item.summary.strip()
+        if line:
+            parts.append(line)
+
+    return "\n\n".join(parts)

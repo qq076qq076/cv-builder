@@ -2,6 +2,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from app.schemas.resume import NormalizedResume, ResumeExperience
 from app.schemas.role import RoleProfile
 from app.services.role_service import RoleService
 
@@ -50,6 +51,39 @@ class RoleServiceTest(unittest.TestCase):
             profile = service.load_profile(role.id)
             self.assertEqual(profile.name, "Walker Lin")
             self.assertIn("Python", profile.skills)
+
+    def test_sync_profile_from_resume_fills_empty_fields_without_overwriting(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            workspace = Path(tmpdir) / "workspace"
+            service = RoleService(workspace)
+            role = service.create_role("Walker")
+            service.save_profile(role.id, RoleProfile(name="Manual Name"))
+
+            service.sync_profile_from_resume(
+                role.id,
+                NormalizedResume(
+                    name="AI Name",
+                    skills=["Python", "FastAPI"],
+                    summary="Backend engineer",
+                    autobiography="AI bio",
+                    experiences=[
+                        ResumeExperience(
+                            company="Acme",
+                            title="Engineer",
+                            startDate="2020",
+                            endDate="2024",
+                            summary="Built APIs",
+                        )
+                    ],
+                ),
+            )
+
+            profile = service.load_profile(role.id)
+            self.assertEqual(profile.name, "Manual Name")
+            self.assertEqual(profile.skills, "Python\nFastAPI")
+            self.assertIn("Backend engineer", profile.career)
+            self.assertIn("Engineer @ Acme", profile.career)
+            self.assertEqual(profile.autobiography, "AI bio")
 
 
 if __name__ == "__main__":

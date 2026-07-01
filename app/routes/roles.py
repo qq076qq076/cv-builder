@@ -94,6 +94,8 @@ def normalize_source(request: Request, role_id: str, source_id: str) -> HTMLResp
         api_key=settings.openai_api_key,
         model=settings.openai_model,
     ).normalize_source(source_id)
+    if result.status == "completed" and result.resume is not None:
+        role_service.sync_profile_from_resume(role_id, result.resume)
     profile = role_service.load_profile(role_id)
     resume = ResumeRepository(role_path).load()
 
