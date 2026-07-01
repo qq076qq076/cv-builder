@@ -100,19 +100,23 @@ class OpenAIResumeParser:
         self.model = model
 
     def parse(self, *, extracted_text: str, source_id: str) -> NormalizedResume:
+        messages = [
+            {"role": "system", "content": RESUME_PARSE_SYSTEM_PROMPT},
+            {"role": "user", "content": build_resume_parse_prompt(source_id, extracted_text)},
+        ]
+        _debug_log_ai_payload("OpenAI input", {"model": self.model, "messages": messages})
         completion = self.client.beta.chat.completions.parse(
             model=self.model,
-            messages=[
-                {"role": "system", "content": RESUME_PARSE_SYSTEM_PROMPT},
-                {"role": "user", "content": build_resume_parse_prompt(source_id, extracted_text)},
-            ],
+            messages=messages,
             response_format=NormalizedResume,
         )
 
         parsed = completion.choices[0].message.parsed
         if parsed is None:
+            _debug_log_ai_payload("OpenAI output", None)
             return NormalizedResume(sourceIds=[source_id])
 
+        _debug_log_ai_payload("OpenAI output", parsed.model_dump(mode="json", by_alias=True))
         return parsed.model_copy(update={"source_ids": [source_id]})
 
 
@@ -131,7 +135,9 @@ class GeminiResumeParser:
                 "schema": NormalizedResume.model_json_schema(by_alias=True),
             },
         }
+        _debug_log_ai_payload("Gemini input", payload)
         response_text = self._post_interaction(payload)
+        _debug_log_ai_payload("Gemini extracted output", response_text)
         parsed = NormalizedResume.model_validate_json(response_text)
         return parsed.model_copy(update={"source_ids": [source_id]})
 
@@ -149,8 +155,10 @@ class GeminiResumeParser:
         try:
             with request.urlopen(req, timeout=60) as response:
                 data = json.loads(response.read().decode("utf-8"))
+                _debug_log_ai_payload("Gemini raw output", data)
         except HTTPError as exc:
             detail = exc.read().decode("utf-8", errors="replace")
+            _debug_log_ai_payload("Gemini error output", detail)
             raise RuntimeError(f"Gemini API HTTP {exc.code}: {detail}") from exc
         except URLError as exc:
             raise RuntimeError(f"Gemini API request failed: {exc.reason}") from exc
@@ -232,3 +240,11 @@ def build_resume_parse_prompt(source_id: str, extracted_text: str) -> str:
         "Return only JSON, no markdown.\n\n"
         f"{extracted_text}"
     )
+
+
+def _debug_log_ai_payload(label: str, payload: object) -> None:
+    print(f"\n[AI DEBUG] {label}", flush=True)
+    if isinstance(payload, str):
+        print(payload, flush=True)
+        return
+    print(json.dumps(payload, ensure_ascii=False, indent=2, default=str), flush=True)
