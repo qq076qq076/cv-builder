@@ -17,11 +17,19 @@
       </div>
     {% else %}
       <h2>選擇履歷檔案</h2>
-      <p>支援格式規劃為 PDF / DOCX / TXT / Markdown。MVP 下一步會把檔案保存到 <code>evidence/files</code> 並建立來源紀錄。</p>
+      <p>支援格式規劃為 PDF / DOCX / TXT / Markdown。上傳後會保存到 <code>evidence/files</code>，並寫入 <code>evidence/sources.json</code> 來源紀錄。</p>
 
       {% if uploaded_filename %}
         <div class="notice">
-          已收到檔案：<strong>{{ uploaded_filename }}</strong>。檔案保存與解析流程尚待下一步實作。
+          已保存檔案：<strong>{{ uploaded_filename }}</strong>
+          {% if saved_source %}
+            <br>
+            來源 ID：<code>{{ saved_source.id }}</code>
+            <br>
+            保存位置：<code>{{ saved_source.path }}</code>
+            <br>
+            檔案大小：{{ saved_source.size_bytes }} bytes
+          {% endif %}
         </div>
       {% endif %}
 
@@ -38,4 +46,3 @@
     {% endif %}
   </section>
 {% endblock %}
-

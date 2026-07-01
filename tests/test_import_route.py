@@ -42,9 +42,11 @@ class ImportRouteTest(unittest.TestCase):
                 files={"resume_file": ("resume.txt", b"hello", "text/plain")},
             )
 
-        self.assertEqual(response.status_code, 200)
-        self.assertIn("已收到檔案", response.text)
-        self.assertIn("resume.txt", response.text)
+            self.assertEqual(response.status_code, 200)
+            self.assertIn("已保存檔案", response.text)
+            self.assertIn("resume.txt", response.text)
+            self.assertTrue((workspace / "evidence/sources.json").is_file())
+            self.assertEqual(len(list((workspace / "evidence/files").iterdir())), 1)
 
     def _client_for(self, workspace: Path) -> TestClient:
         patcher = patch.dict(os.environ, {"CV_BUILDER_WORKSPACE": str(workspace)})
@@ -55,4 +57,3 @@ class ImportRouteTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-
