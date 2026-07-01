@@ -189,6 +189,8 @@ def _normalize_imported_source(
         role_path=role_path,
         api_key=settings.openai_api_key,
         model=settings.openai_model,
+        gemini_api_key=settings.gemini_api_key,
+        gemini_model=settings.gemini_model,
     ).normalize_source(source_id)
     if result.status == "completed" and result.resume is not None:
         role_service.sync_profile_from_resume(role_id, result.resume)

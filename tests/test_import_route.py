@@ -165,6 +165,7 @@ class ImportRouteTest(unittest.TestCase):
             {
                 "CV_BUILDER_WORKSPACE": str(workspace),
                 "OPENAI_API_KEY": openai_api_key,
+                "GEMINI_API_KEY": "",
             },
         )
         patcher.start()

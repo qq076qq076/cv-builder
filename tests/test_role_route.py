@@ -102,12 +102,13 @@ class RoleRouteTest(unittest.TestCase):
             )
 
             self.assertEqual(response.status_code, 200)
-            self.assertIn("缺少 OPENAI_API_KEY", response.text)
+            self.assertIn("缺少 OPENAI_API_KEY 或 GEMINI_API_KEY", response.text)
 
     def _client_for(self, workspace: Path, openai_api_key: str | None = None) -> TestClient:
         env = {"CV_BUILDER_WORKSPACE": str(workspace)}
         if openai_api_key is not None:
             env["OPENAI_API_KEY"] = openai_api_key
+        env["GEMINI_API_KEY"] = ""
         patcher = patch.dict(os.environ, env)
         patcher.start()
         self.addCleanup(patcher.stop)

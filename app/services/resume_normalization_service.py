@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
-from app.ai.resume_parser import OpenAIResumeParser
+from app.ai.resume_parser import GeminiResumeParser, OpenAIResumeParser, ResumeParser
 from app.schemas.resume import NormalizedResume
 from app.storage.evidence import EvidenceRepository
 from app.storage.resume import ResumeRepository
@@ -23,13 +23,17 @@ class ResumeNormalizationService:
         role_path: Path,
         api_key: str | None,
         model: str,
-        parser: OpenAIResumeParser | None = None,
+        gemini_api_key: str | None = None,
+        gemini_model: str = "gemini-3.5-flash",
+        parser: ResumeParser | None = None,
     ) -> None:
         self.role_path = role_path
         self.evidence_repository = EvidenceRepository(role_path)
         self.resume_repository = ResumeRepository(role_path)
         self.api_key = api_key
         self.model = model
+        self.gemini_api_key = gemini_api_key
+        self.gemini_model = gemini_model
         self.parser = parser
 
     def normalize_source(self, source_id: str) -> ResumeNormalizationResult:
@@ -38,15 +42,18 @@ class ResumeNormalizationService:
             return ResumeNormalizationResult(status="not_found", message="找不到來源")
         if source.extracted_text_path is None:
             return ResumeNormalizationResult(status="no_text", message="來源尚未完成文字抽取")
-        if not self.api_key and self.parser is None:
-            return ResumeNormalizationResult(status="missing_api_key", message="缺少 OPENAI_API_KEY")
+        if not self.api_key and not self.gemini_api_key and self.parser is None:
+            return ResumeNormalizationResult(
+                status="missing_api_key",
+                message="缺少 OPENAI_API_KEY 或 GEMINI_API_KEY",
+            )
 
         extracted_path = self.role_path / source.extracted_text_path
         if not extracted_path.is_file():
             return ResumeNormalizationResult(status="no_text", message="找不到抽取文字檔")
 
         extracted_text = extracted_path.read_text(encoding="utf-8")
-        parser = self.parser or OpenAIResumeParser(api_key=self.api_key or "", model=self.model)
+        parser = self.parser or self._build_parser()
         try:
             resume = parser.parse(extracted_text=extracted_text, source_id=source.id)
         except Exception as exc:
@@ -58,3 +65,8 @@ class ResumeNormalizationService:
         saved_resume = self.resume_repository.save(resume)
 
         return ResumeNormalizationResult(status="completed", resume=saved_resume)
+
+    def _build_parser(self) -> ResumeParser:
+        if self.api_key:
+            return OpenAIResumeParser(api_key=self.api_key, model=self.model)
+        return GeminiResumeParser(api_key=self.gemini_api_key or "", model=self.gemini_model)

@@ -574,12 +574,15 @@ class AIClient(Protocol):
 CV_BUILDER_WORKSPACE=./workspace
 OPENAI_API_KEY=
 OPENAI_MODEL=gpt-4.1-mini
+GEMINI_API_KEY=
+GEMINI_MODEL=gemini-3.5-flash
 ```
 
 規則：
 
 - `.env` 不提交 git。
 - API Key 不寫入 workspace。
+- `OPENAI_API_KEY` 與 `GEMINI_API_KEY` 任一存在即可啟用 AI 解析；兩者都存在時優先使用 OpenAI。
 - UI 需提示 AI API 會送出哪些資料。
 
 ---

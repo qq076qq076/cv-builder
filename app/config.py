@@ -14,6 +14,8 @@ class Settings:
     workspace_path: Path
     openai_model: str
     openai_api_key: str | None
+    gemini_model: str
+    gemini_api_key: str | None
 
 
 def get_settings() -> Settings:
@@ -21,4 +23,6 @@ def get_settings() -> Settings:
         workspace_path=Path(os.getenv("CV_BUILDER_WORKSPACE", "./workspace")),
         openai_model=os.getenv("OPENAI_MODEL", "gpt-4.1-mini"),
         openai_api_key=os.getenv("OPENAI_API_KEY"),
+        gemini_model=os.getenv("GEMINI_MODEL", "gemini-3.5-flash"),
+        gemini_api_key=os.getenv("GEMINI_API_KEY"),
     )
