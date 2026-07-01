@@ -32,3 +32,8 @@ class EvidenceRepository:
         )
         return updated
 
+    def find_by_content_hash(self, content_hash: str) -> EvidenceSource | None:
+        for source in self.list_sources().sources:
+            if source.content_hash == content_hash:
+                return source
+        return None

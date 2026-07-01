@@ -19,6 +19,7 @@ class EvidenceRepositoryTest(unittest.TestCase):
                 originalFilename="resume.txt",
                 contentType="text/plain",
                 sizeBytes=5,
+                contentHash="abc123",
                 createdAt=datetime(2026, 7, 1, tzinfo=timezone.utc),
             )
 
@@ -31,8 +32,9 @@ class EvidenceRepositoryTest(unittest.TestCase):
             self.assertEqual(loaded.schema_version, 1)
             self.assertEqual(loaded.sources[0].id, "src_test")
             self.assertEqual(loaded.sources[0].path, "evidence/files/src_test_resume.txt")
+            self.assertEqual(repository.find_by_content_hash("abc123").id, "src_test")
+            self.assertIsNone(repository.find_by_content_hash("missing"))
 
 
 if __name__ == "__main__":
     unittest.main()
-

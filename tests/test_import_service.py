@@ -1,9 +1,13 @@
 import tempfile
 import unittest
+from hashlib import sha256
+from datetime import datetime, timezone
 from pathlib import Path
 
+from app.schemas.evidence import EvidenceSource
 from app.services.import_service import ImportService
 from app.storage.evidence import EvidenceRepository
+from tests.test_pdf_importer import SIMPLE_TEXT_PDF
 
 
 class ImportServiceTest(unittest.TestCase):
@@ -35,9 +39,76 @@ class ImportServiceTest(unittest.TestCase):
             self.assertEqual(len(sources.sources), 1)
             self.assertEqual(sources.sources[0].id, saved_upload.source.id)
             self.assertEqual(sources.sources[0].size_bytes, 5)
+            self.assertEqual(sources.sources[0].content_hash, sha256(b"hello").hexdigest())
             self.assertEqual(sources.sources[0].extraction_status, "completed")
 
-    def test_save_unsupported_file_does_not_create_extracted_text(self) -> None:
+    def test_save_pdf_extracts_text(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            workspace = Path(tmpdir) / "workspace"
+            service = ImportService(workspace)
+
+            saved_upload = service.save_uploaded_file(
+                filename="resume.pdf",
+                content_type="application/pdf",
+                content=SIMPLE_TEXT_PDF,
+            )
+
+            self.assertEqual(saved_upload.source.extraction_status, "completed")
+            self.assertIsNotNone(saved_upload.source.extracted_text_path)
+            self.assertIn("Hello PDF Resume", saved_upload.extracted_text)
+
+    def test_duplicate_content_reuses_existing_source_without_extracting(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            workspace = Path(tmpdir) / "workspace"
+            service = ImportService(workspace)
+
+            first_upload = service.save_uploaded_file(
+                filename="resume.txt",
+                content_type="text/plain",
+                content=b"same content",
+            )
+            second_upload = service.save_uploaded_file(
+                filename="copy.txt",
+                content_type="text/plain",
+                content=b"same content",
+            )
+
+            self.assertFalse(first_upload.is_duplicate)
+            self.assertTrue(second_upload.is_duplicate)
+            self.assertEqual(second_upload.source.id, first_upload.source.id)
+            self.assertEqual(len(EvidenceRepository(workspace).list_sources().sources), 1)
+            self.assertEqual(len(list((workspace / "evidence/files").iterdir())), 1)
+            self.assertEqual(len(list((workspace / "evidence/extracted").iterdir())), 1)
+
+    def test_duplicate_content_matches_existing_source_without_content_hash(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            workspace = Path(tmpdir) / "workspace"
+            existing_path = workspace / "evidence/files/src_old_resume.txt"
+            existing_path.parent.mkdir(parents=True)
+            existing_path.write_bytes(b"legacy content")
+            EvidenceRepository(workspace).add_source(
+                EvidenceSource(
+                    id="src_old",
+                    label="old resume",
+                    path="evidence/files/src_old_resume.txt",
+                    originalFilename="old.txt",
+                    contentType="text/plain",
+                    sizeBytes=len(b"legacy content"),
+                    createdAt=datetime(2026, 7, 1, tzinfo=timezone.utc),
+                )
+            )
+
+            saved_upload = ImportService(workspace).save_uploaded_file(
+                filename="new.txt",
+                content_type="text/plain",
+                content=b"legacy content",
+            )
+
+            self.assertTrue(saved_upload.is_duplicate)
+            self.assertEqual(saved_upload.source.id, "src_old")
+            self.assertEqual(len(EvidenceRepository(workspace).list_sources().sources), 1)
+
+    def test_invalid_pdf_is_saved_with_failed_extraction_status(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             workspace = Path(tmpdir) / "workspace"
             service = ImportService(workspace)
@@ -48,9 +119,9 @@ class ImportServiceTest(unittest.TestCase):
                 content=b"%PDF",
             )
 
-            self.assertEqual(saved_upload.source.extraction_status, "not_supported")
+            self.assertTrue(saved_upload.saved_path.is_file())
+            self.assertEqual(saved_upload.source.extraction_status, "failed")
             self.assertIsNone(saved_upload.source.extracted_text_path)
-            self.assertIsNone(saved_upload.extracted_text)
 
 
 if __name__ == "__main__":

@@ -21,7 +21,11 @@
 
       {% if uploaded_filename %}
         <div class="notice">
-          已保存檔案：<strong>{{ uploaded_filename }}</strong>
+          {% if is_duplicate %}
+            內容已存在：<strong>{{ uploaded_filename }}</strong>。已使用既有來源，未重複保存或抽取。
+          {% else %}
+            已保存檔案：<strong>{{ uploaded_filename }}</strong>
+          {% endif %}
           {% if saved_source %}
             <br>
             來源 ID：<code>{{ saved_source.id }}</code>
@@ -45,7 +49,15 @@
           </section>
         {% elif saved_source and saved_source.extraction_status == "not_supported" %}
           <div class="notice notice-muted">
-            這個檔案格式目前已保存，但尚未支援文字抽取。下一步可加入 PDF / DOCX parser。
+            這個檔案格式目前已保存，但尚未支援文字抽取。下一步可加入 DOCX parser。
+          </div>
+        {% elif saved_source and saved_source.extraction_status == "empty" %}
+          <div class="notice notice-muted">
+            檔案已保存，但沒有抽取到可用文字。若這是掃描 PDF，後續需要 OCR 才能讀取內容。
+          </div>
+        {% elif saved_source and saved_source.extraction_status == "failed" %}
+          <div class="notice notice-muted">
+            檔案已保存，但文字抽取失敗。請確認檔案是否可讀，或稍後改用其他格式匯入。
           </div>
         {% endif %}
       {% endif %}

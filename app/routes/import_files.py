@@ -29,6 +29,7 @@ def import_page(request: Request) -> HTMLResponse:
             "uploaded_filename": None,
             "saved_source": None,
             "text_preview": None,
+            "is_duplicate": False,
         },
     )
 
@@ -54,6 +55,7 @@ async def upload_file(request: Request, resume_file: UploadFile = File(...)) -> 
             "uploaded_filename": resume_file.filename,
             "saved_source": saved_upload.source,
             "text_preview": _preview_text(saved_upload.extracted_text),
+            "is_duplicate": saved_upload.is_duplicate,
         },
     )
 
