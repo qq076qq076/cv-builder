@@ -567,6 +567,8 @@
 
         <div class="job-list">
           {% for job in jobs %}
+            {% set job_output = job_outputs.get(job.id, {}) %}
+            {% set cover_letter_output = job_output.get("cover-letter") %}
             <article class="job-item">
               <div class="job-company-badge">{{ job.company[:1]|upper if job.company else "J" }}</div>
               <div class="job-item-main">
@@ -581,8 +583,13 @@
                 </form>
                 <form method="post" action="/roles/{{ role.id }}/jobs/{{ job.id }}/generate">
                   <input name="kind" type="hidden" value="cover_letter">
-                  <button class="app-button app-button-secondary" type="submit">生成推薦信</button>
+                  <button class="app-button app-button-secondary" type="submit">
+                    {% if cover_letter_output %}重新生成推薦信{% else %}生成推薦信{% endif %}
+                  </button>
                 </form>
+                {% if cover_letter_output %}
+                  <a class="app-button app-button-secondary" href="/roles/{{ role.id }}?generated_output={{ cover_letter_output.path }}#jobs">查看推薦信</a>
+                {% endif %}
               </div>
             </article>
           {% else %}
@@ -590,6 +597,25 @@
           {% endfor %}
         </div>
       </section>
+
+      {% if active_generated_output %}
+        <div class="app-modal-backdrop" role="presentation">
+          <section class="app-modal" role="dialog" aria-modal="true" aria-labelledby="generated-output-title">
+            <div class="app-modal-heading">
+              <div>
+                <p class="app-kicker">Generated Output</p>
+                <h2 id="generated-output-title">
+                  {% if active_generated_output.kind == "cover-letter" %}推薦信草稿{% else %}生成內容{% endif %}
+                </h2>
+              </div>
+              <a class="app-modal-close" href="/roles/{{ role.id }}#jobs" aria-label="關閉 popup">
+                <span class="material-symbols-outlined">close</span>
+              </a>
+            </div>
+            <pre class="generated-output-content">{{ active_generated_output.content }}</pre>
+          </section>
+        </div>
+      {% endif %}
     {% endif %}
 
     <section class="app-panel app-section">

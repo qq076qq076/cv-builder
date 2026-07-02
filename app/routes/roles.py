@@ -52,6 +52,9 @@ def role_detail(
     profile = role_service.load_profile(role_id)
     resume = ResumeRepository(role_path).load()
     job_service = JobService(role_path)
+    active_generated_output = (
+        job_service.get_output_by_path(generated_output) if generated_output else None
+    )
     return templates.TemplateResponse(
         request,
         "role_detail.html",
@@ -63,7 +66,9 @@ def role_detail(
             "has_role_content": _has_profile_content(profile) or resume.has_content(),
             "sources": EvidenceRepository(role_path).list_sources().sources,
             "jobs": job_service.list_jobs(),
+            "job_outputs": job_service.list_outputs_by_job(),
             "generated_output": generated_output,
+            "active_generated_output": active_generated_output,
             "normalization_result": None,
             "edit": _resume_edit_context(resume),
         },
@@ -346,7 +351,9 @@ def normalize_source(request: Request, role_id: str, source_id: str) -> HTMLResp
             "has_role_content": _has_profile_content(profile) or resume.has_content(),
             "sources": EvidenceRepository(role_path).list_sources().sources,
             "jobs": job_service.list_jobs(),
+            "job_outputs": job_service.list_outputs_by_job(),
             "generated_output": None,
+            "active_generated_output": None,
             "normalization_result": result,
             "edit": _resume_edit_context(resume),
         },

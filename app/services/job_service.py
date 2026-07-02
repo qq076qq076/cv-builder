@@ -16,6 +16,7 @@ from app.storage.jobs import JobRepository
 class GeneratedJobOutput:
     path: str
     kind: str
+    content: str = ""
 
 
 class JobService:
@@ -55,10 +56,50 @@ class JobService:
         output_path = self.role_path / relative_path
         output_path.parent.mkdir(parents=True, exist_ok=True)
         output_path.write_text(
-            _build_generated_markdown(job=job, kind=kind, resume=resume),
+            content := _build_generated_markdown(job=job, kind=kind, resume=resume),
             encoding="utf-8",
         )
-        return GeneratedJobOutput(path=relative_path.as_posix(), kind=safe_kind)
+        return GeneratedJobOutput(path=relative_path.as_posix(), kind=safe_kind, content=content)
+
+    def list_outputs_by_job(self) -> dict[str, dict[str, GeneratedJobOutput]]:
+        outputs: dict[str, dict[str, GeneratedJobOutput]] = {}
+        for job in self.list_jobs():
+            for kind in ("resume", "cover-letter"):
+                output = self.get_output(job_id=job.id, kind=kind)
+                if output is not None:
+                    outputs.setdefault(job.id, {})[kind] = output
+        return outputs
+
+    def get_output(self, *, job_id: str, kind: str) -> GeneratedJobOutput | None:
+        safe_kind = "cover-letter" if kind in {"cover_letter", "cover-letter"} else "resume"
+        relative_path = Path("outputs") / f"{job_id}-{safe_kind}.md"
+        output_path = self.role_path / relative_path
+        if not output_path.is_file():
+            return None
+        return GeneratedJobOutput(
+            path=relative_path.as_posix(),
+            kind=safe_kind,
+            content=output_path.read_text(encoding="utf-8"),
+        )
+
+    def get_output_by_path(self, relative_path: str) -> GeneratedJobOutput | None:
+        requested_path = Path(relative_path)
+        if requested_path.is_absolute() or ".." in requested_path.parts:
+            return None
+        if requested_path.parts[:1] != ("outputs",):
+            return None
+
+        output_path = self.role_path / requested_path
+        if not output_path.is_file():
+            return None
+
+        name = requested_path.name
+        kind = "cover-letter" if name.endswith("-cover-letter.md") else "resume"
+        return GeneratedJobOutput(
+            path=requested_path.as_posix(),
+            kind=kind,
+            content=output_path.read_text(encoding="utf-8"),
+        )
 
 
 def _title_from_url(url: str) -> str:
@@ -80,7 +121,14 @@ def _build_generated_markdown(
     kind: str,
     resume: NormalizedResume,
 ) -> str:
-    title = "專用履歷草稿" if kind == "resume" else "推薦信草稿"
+    if kind == "resume":
+        return _build_resume_markdown(job=job, resume=resume)
+
+    return _build_cover_letter_markdown(job=job, resume=resume)
+
+
+def _build_resume_markdown(*, job: TrackedJob, resume: NormalizedResume) -> str:
+    title = "專用履歷草稿"
     skills = ", ".join(resume.skills[:12]) if resume.skills else "尚未解析技能"
     summary = resume.summary or "尚未解析摘要"
     return (
@@ -90,4 +138,30 @@ def _build_generated_markdown(
         f"- URL：{job.url}\n\n"
         f"## 候選人摘要\n\n{summary}\n\n"
         f"## 關鍵技能\n\n{skills}\n"
+    )
+
+
+def _build_cover_letter_markdown(*, job: TrackedJob, resume: NormalizedResume) -> str:
+    candidate_name = resume.name or "候選人"
+    candidate_title = resume.title or "求職者"
+    skills = ", ".join(resume.skills[:8]) if resume.skills else "相關技術能力"
+    summary = resume.summary or "具備跨職能協作、產品開發與問題解決能力。"
+    experience = resume.experiences[0] if resume.experiences else None
+    experience_line = ""
+    if experience is not None:
+        experience_line = (
+            f"過去在 {experience.company or '相關團隊'} 擔任 "
+            f"{experience.title or candidate_title}，{experience.summary or '累積了可落地的產品開發經驗'}。"
+        )
+
+    return (
+        "# 推薦信草稿\n\n"
+        f"親愛的 {job.company} 招募團隊您好：\n\n"
+        f"我誠摯推薦 {candidate_name} 應徵貴公司的「{job.title}」職缺。"
+        f"{candidate_name} 是一位 {candidate_title}，{summary}\n\n"
+        f"{experience_line}\n\n"
+        f"他具備 {skills} 等能力，能在需求釐清、系統實作、品質維護與團隊協作之間取得良好平衡。"
+        "我相信他能快速理解貴公司的產品情境，並為團隊帶來穩定且可持續的交付能力。\n\n"
+        "若需要更完整的背景資料，建議搭配履歷內容與實際作品進一步評估。謝謝您撥冗閱讀。\n\n"
+        "此致\n敬禮\n"
     )

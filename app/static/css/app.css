@@ -1255,6 +1255,75 @@ textarea {
   gap: 8px;
 }
 
+.app-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(0, 0, 0, 0.62);
+  backdrop-filter: blur(10px);
+}
+
+.app-modal {
+  width: min(880px, 100%);
+  max-height: min(82vh, 820px);
+  overflow: hidden;
+  border: 1px solid rgba(0, 219, 231, 0.35);
+  border-radius: var(--radius-md);
+  background: rgba(16, 20, 21, 0.96);
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.5), 0 0 28px rgba(0, 219, 231, 0.2);
+}
+
+.app-modal-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 24px;
+  border-bottom: 1px solid rgba(58, 73, 75, 0.55);
+}
+
+.app-modal-heading h2 {
+  margin: 6px 0 0;
+  color: var(--color-text-strong);
+}
+
+.app-modal-close {
+  display: grid;
+  flex: 0 0 auto;
+  width: 40px;
+  height: 40px;
+  place-items: center;
+  border: 1px solid rgba(225, 253, 255, 0.28);
+  border-radius: var(--radius-sm);
+  color: var(--color-muted);
+  text-decoration: none;
+  transition: color 160ms ease, border-color 160ms ease;
+}
+
+.app-modal-close:hover {
+  border-color: rgba(0, 219, 231, 0.55);
+  color: var(--color-primary);
+}
+
+.generated-output-content {
+  max-height: calc(min(82vh, 820px) - 112px);
+  overflow: auto;
+  margin: 0;
+  padding: 24px;
+  color: var(--color-text);
+  background:
+    linear-gradient(rgba(0, 219, 231, 0.025) 1px, transparent 1px),
+    rgba(11, 15, 16, 0.48);
+  background-size: 100% 32px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 14px;
+  line-height: 1.7;
+  white-space: pre-wrap;
+}
+
 .upload-form {
   margin-top: 24px;
 }

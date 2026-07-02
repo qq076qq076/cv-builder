@@ -320,6 +320,44 @@ class RoleRouteTest(unittest.TestCase):
             )
             self.assertTrue((workspace / f"walker/outputs/{job_id}-resume.md").is_file())
 
+    def test_generate_cover_letter_shows_popup_and_existing_button(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            workspace = Path(tmpdir) / "workspace"
+            RoleService(workspace).create_role("Walker")
+            client = self._client_for(workspace)
+            client.post(
+                "/roles/walker/resume/profile",
+                data={
+                    "name": "Walker Lin",
+                    "title": "Frontend Engineer",
+                    "summary": "Builds reliable web apps",
+                },
+            )
+            client.post(
+                "/roles/walker/jobs",
+                data={"job_url": "https://jobs.example.com/senior-frontend"},
+            )
+            jobs_path = workspace / "walker/jobs/jobs.json"
+            job_id = json.loads(jobs_path.read_text(encoding="utf-8"))["jobs"][0]["id"]
+
+            response = client.post(
+                f"/roles/walker/jobs/{job_id}/generate",
+                data={"kind": "cover_letter"},
+                follow_redirects=False,
+            )
+
+            self.assertEqual(response.status_code, 303)
+            self.assertEqual(
+                response.headers["location"],
+                f"/roles/walker?generated_output=outputs/{job_id}-cover-letter.md#jobs",
+            )
+            page = client.get(response.headers["location"])
+            self.assertEqual(page.status_code, 200)
+            self.assertIn("推薦信草稿", page.text)
+            self.assertIn("Walker Lin", page.text)
+            self.assertIn("查看推薦信", page.text)
+            self.assertIn("重新生成推薦信", page.text)
+
     def test_normalize_source_without_api_key_shows_message(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             workspace = Path(tmpdir) / "workspace"
