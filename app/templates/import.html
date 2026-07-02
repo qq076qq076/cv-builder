@@ -32,12 +32,12 @@
       </div>
     {% else %}
       <h2>選擇履歷檔案</h2>
-      <p>支援格式規劃為 PDF / DOCX / TXT / Markdown。上傳後會保存到 <code>evidence/files</code>，並寫入 <code>evidence/sources.json</code> 來源紀錄。</p>
+      <p>支援 PDF / DOCX / TXT / Markdown。上傳後會保存到 <code>evidence/files</code>，AI 會直接讀取原始檔進行解析，不會事先抽取文字。</p>
 
       {% if uploaded_filename %}
         <div class="app-notice">
           {% if is_duplicate %}
-            內容已存在：<strong>{{ uploaded_filename }}</strong>。已使用既有來源，未重複保存或抽取。
+            內容已存在：<strong>{{ uploaded_filename }}</strong>。已使用既有來源，未重複保存或解析。
           {% else %}
             已保存檔案：<strong>{{ uploaded_filename }}</strong>
           {% endif %}
@@ -48,52 +48,16 @@
             保存位置：<code>{{ saved_source.path }}</code>
             <br>
             檔案大小：{{ saved_source.size_bytes }} bytes
-            <br>
-            抽取狀態：{{ saved_source.extraction_status }}
-            {% if saved_source.extracted_text_path %}
-              <br>
-              文字位置：<code>{{ saved_source.extracted_text_path }}</code>
-            {% endif %}
           {% endif %}
         </div>
-
-        {% if text_preview %}
-          <section class="preview-block">
-            <h3>文字預覽</h3>
-            <pre>{{ text_preview }}</pre>
-          </section>
-        {% elif saved_source and saved_source.extraction_status == "not_supported" %}
-          <div class="app-notice app-notice-muted">
-            這個檔案格式目前已保存，但尚未支援文字抽取。下一步可加入 DOCX parser。
-          </div>
-        {% elif saved_source and saved_source.extraction_status == "empty" %}
-          <div class="app-notice app-notice-muted">
-            檔案已保存，但沒有抽取到可用文字。若這是掃描 PDF，後續需要 OCR 才能讀取內容。
-          </div>
-        {% elif saved_source and saved_source.extraction_status == "failed" %}
-          <div class="app-notice app-notice-muted">
-            檔案已保存，但文字抽取失敗。請確認檔案是否可讀，或稍後改用其他格式匯入。
-          </div>
-        {% endif %}
       {% endif %}
 
       {% if reprocessed_source %}
         <div class="app-notice">
           已重新處理來源：<code>{{ reprocessed_source.id }}</code>
           <br>
-          抽取狀態：{{ reprocessed_source.extraction_status }}
-          {% if reprocessed_source.extracted_text_path %}
-            <br>
-            文字位置：<code>{{ reprocessed_source.extracted_text_path }}</code>
-          {% endif %}
+          已重新讀取原始檔並送交 AI 解析。
         </div>
-
-        {% if text_preview %}
-          <section class="preview-block">
-            <h3>文字預覽</h3>
-            <pre>{{ text_preview }}</pre>
-          </section>
-        {% endif %}
       {% elif reprocess_missing %}
         <div class="app-notice app-notice-muted">
           找不到指定來源，無法重新處理。
@@ -133,12 +97,6 @@
                     <code>{{ source.id }}</code>
                     <br>
                     原始檔：<code>{{ source.path }}</code>
-                    <br>
-                    抽取狀態：{{ source.extraction_status }}
-                    {% if source.extracted_text_path %}
-                      <br>
-                      文字檔：<code>{{ source.extracted_text_path }}</code>
-                    {% endif %}
                     {% if not source.content_hash %}
                       <br>
                       <span class="source-warning">尚未記錄內容 hash</span>
@@ -146,11 +104,9 @@
                   </p>
                 </div>
 
-                {% if source.extraction_status != "completed" or not source.content_hash %}
-                  <form method="post" action="/roles/{{ role.id }}/import/sources/{{ source.id }}/reprocess">
-                    <button class="app-button app-button-secondary" type="submit">重新抽取</button>
-                  </form>
-                {% endif %}
+                <form method="post" action="/roles/{{ role.id }}/import/sources/{{ source.id }}/reprocess">
+                  <button class="app-button app-button-secondary" type="submit">重新解析原始檔</button>
+                </form>
               </article>
             {% endfor %}
           </div>

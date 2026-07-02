@@ -138,9 +138,9 @@ class RoleRouteTest(unittest.TestCase):
             workspace = Path(tmpdir) / "workspace"
             RoleService(workspace).create_role("Walker")
             role_path = workspace / "walker"
-            extracted_path = role_path / "evidence/extracted/src_1.txt"
-            extracted_path.parent.mkdir(parents=True, exist_ok=True)
-            extracted_path.write_text("resume text", encoding="utf-8")
+            source_path = role_path / "evidence/files/src_1_resume.txt"
+            source_path.parent.mkdir(parents=True, exist_ok=True)
+            source_path.write_text("resume text", encoding="utf-8")
             EvidenceRepository(role_path).add_source(
                 EvidenceSource(
                     id="src_1",
@@ -149,8 +149,7 @@ class RoleRouteTest(unittest.TestCase):
                     originalFilename="resume.txt",
                     contentType="text/plain",
                     sizeBytes=11,
-                    extractedTextPath="evidence/extracted/src_1.txt",
-                    extractionStatus="completed",
+                    extractionStatus="not_required",
                     createdAt=datetime(2026, 7, 1, tzinfo=timezone.utc),
                 )
             )

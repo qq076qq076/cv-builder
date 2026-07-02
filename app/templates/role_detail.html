@@ -44,7 +44,7 @@
         </div>
         <div class="app-hero-copy">
           <h1>初始化{{ role.name }}角色</h1>
-          <p>尚未建立個人資訊。請先上傳履歷，系統會抽取文字並可用 OpenAI 解析成結構化履歷資料。</p>
+          <p>尚未建立個人資訊。請先上傳履歷，系統會直接把原始檔交給 AI 解析成結構化履歷資料。</p>
         </div>
         <a class="app-upload-zone" href="/roles/{{ role.id }}/import">
           <span class="upload-zone-icon">+</span>
@@ -280,18 +280,12 @@
                 <p>
                   <code>{{ source.id }}</code>
                   <br>
-                  抽取狀態：{{ source.extraction_status }}
-                  {% if source.extracted_text_path %}
-                    <br>
-                    文字檔：<code>{{ source.extracted_text_path }}</code>
-                  {% endif %}
+                  原始檔：<code>{{ source.path }}</code>
                 </p>
               </div>
-              {% if source.extraction_status == "completed" and source.extracted_text_path %}
-                <form method="post" action="/roles/{{ role.id }}/sources/{{ source.id }}/normalize">
-                  <button class="app-button app-button-secondary" type="submit">解析成履歷資料</button>
-                </form>
-              {% endif %}
+              <form method="post" action="/roles/{{ role.id }}/sources/{{ source.id }}/normalize">
+                <button class="app-button app-button-secondary" type="submit">解析成履歷資料</button>
+              </form>
             </article>
           {% endfor %}
         </div>

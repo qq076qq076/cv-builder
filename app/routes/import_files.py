@@ -71,11 +71,7 @@ async def upload_file(
         role_service=role_service,
         role_id=role_id,
         source_id=saved_upload.source.id,
-        should_normalize=(
-            not saved_upload.is_duplicate
-            and saved_upload.source.extraction_status == "completed"
-            and saved_upload.source.extracted_text_path is not None
-        ),
+        should_normalize=not saved_upload.is_duplicate,
     )
 
     return _render_import_page(
@@ -84,7 +80,6 @@ async def upload_file(
         role=role,
         uploaded_filename=resume_file.filename,
         saved_source=saved_upload.source,
-        text_preview=_preview_text(saved_upload.extracted_text),
         is_duplicate=saved_upload.is_duplicate,
         normalization_result=normalization_result,
     )
@@ -109,11 +104,7 @@ def reprocess_source(request: Request, role_id: str, source_id: str) -> HTMLResp
         role_service=role_service,
         role_id=role_id,
         source_id=saved_upload.source.id if saved_upload else source_id,
-        should_normalize=(
-            saved_upload is not None
-            and saved_upload.source.extraction_status == "completed"
-            and saved_upload.source.extracted_text_path is not None
-        ),
+        should_normalize=saved_upload is not None,
     )
 
     return _render_import_page(
@@ -121,7 +112,6 @@ def reprocess_source(request: Request, role_id: str, source_id: str) -> HTMLResp
         service=service,
         role=role,
         reprocessed_source=saved_upload.source if saved_upload else None,
-        text_preview=_preview_text(saved_upload.extracted_text) if saved_upload else None,
         reprocess_missing=saved_upload is None,
         normalization_result=normalization_result,
     )
@@ -134,7 +124,6 @@ def _render_import_page(
     role,
     uploaded_filename: str | None = None,
     saved_source=None,
-    text_preview: str | None = None,
     is_duplicate: bool = False,
     reprocessed_source=None,
     reprocess_missing: bool = False,
@@ -154,23 +143,12 @@ def _render_import_page(
             "sources": service.evidence_repository.list_sources().sources,
             "uploaded_filename": uploaded_filename,
             "saved_source": saved_source,
-            "text_preview": text_preview,
             "is_duplicate": is_duplicate,
             "reprocessed_source": reprocessed_source,
             "reprocess_missing": reprocess_missing,
             "normalization_result": normalization_result,
         },
     )
-
-
-def _preview_text(text: str | None, limit: int = 1200) -> str | None:
-    if text is None:
-        return None
-
-    normalized = text.strip()
-    if len(normalized) <= limit:
-        return normalized
-    return f"{normalized[:limit]}..."
 
 
 def _normalize_imported_source(

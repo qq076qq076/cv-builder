@@ -18,9 +18,10 @@ from tests.test_pdf_importer import SIMPLE_TEXT_PDF
 
 
 class FakeOpenAIResumeParser:
-    def __init__(self, *, api_key: str, model: str) -> None:
+    def __init__(self, *, api_key: str, model: str, log_path: Path | None = None) -> None:
         self.api_key = api_key
         self.model = model
+        self.log_path = log_path
 
     def parse(self, *, extracted_text: str, source_id: str) -> NormalizedResume:
         return NormalizedResume(
@@ -28,6 +29,21 @@ class FakeOpenAIResumeParser:
             name="Walker Lin",
             skills=["Python", "FastAPI"],
             summary=extracted_text,
+        )
+
+    def parse_file(
+        self,
+        *,
+        filename: str,
+        content_type: str | None,
+        content: bytes,
+        source_id: str,
+    ) -> NormalizedResume:
+        return NormalizedResume(
+            sourceIds=[source_id],
+            name="Walker Lin",
+            skills=["Python", "FastAPI"],
+            summary=f"{filename}:{content_type}:{len(content)}",
         )
 
 
@@ -65,11 +81,9 @@ class ImportRouteTest(unittest.TestCase):
             self.assertEqual(response.status_code, 200)
             self.assertIn("已保存檔案", response.text)
             self.assertIn("resume.txt", response.text)
-            self.assertIn("文字預覽", response.text)
-            self.assertIn("hello", response.text)
             self.assertTrue((workspace / "walker/evidence/sources.json").is_file())
             self.assertEqual(len(list((workspace / "walker/evidence/files").iterdir())), 1)
-            self.assertEqual(len(list((workspace / "walker/evidence/extracted").iterdir())), 1)
+            self.assertFalse((workspace / "walker/evidence/extracted").exists())
 
     def test_upload_file_auto_normalizes_and_syncs_profile(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -93,7 +107,7 @@ class ImportRouteTest(unittest.TestCase):
             self.assertEqual(profile.name, "Walker Lin")
             self.assertEqual(profile.skills, "Python\nFastAPI")
 
-    def test_upload_pdf_shows_unsupported_extraction_message(self) -> None:
+    def test_upload_pdf_saves_without_extracting_text(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             workspace = Path(tmpdir) / "workspace"
             RoleService(workspace).create_role("Walker")
@@ -105,8 +119,26 @@ class ImportRouteTest(unittest.TestCase):
 
             self.assertEqual(response.status_code, 200)
             self.assertIn("已保存檔案", response.text)
-            self.assertIn("文字預覽", response.text)
-            self.assertIn("Hello PDF Resume", response.text)
+            self.assertFalse((workspace / "walker/evidence/extracted").exists())
+
+    def test_upload_pdf_auto_normalizes_from_original_file(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            workspace = Path(tmpdir) / "workspace"
+            RoleService(workspace).create_role("Walker")
+
+            with patch(
+                "app.services.resume_normalization_service.OpenAIResumeParser",
+                FakeOpenAIResumeParser,
+            ):
+                response = self._client_for(workspace, openai_api_key="test-key").post(
+                    "/roles/walker/import/files",
+                    files={"resume_file": ("resume.pdf", SIMPLE_TEXT_PDF, "application/pdf")},
+                )
+
+            self.assertEqual(response.status_code, 200)
+            resume = ResumeRepository(workspace / "walker").load()
+            self.assertEqual(resume.name, "Walker Lin")
+            self.assertIn("resume.pdf:application/pdf", resume.summary)
 
     def test_duplicate_upload_reuses_existing_source(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -127,7 +159,7 @@ class ImportRouteTest(unittest.TestCase):
             self.assertEqual(second_response.status_code, 200)
             self.assertIn("內容已存在", second_response.text)
             self.assertEqual(len(list((workspace / "walker/evidence/files").iterdir())), 1)
-            self.assertEqual(len(list((workspace / "walker/evidence/extracted").iterdir())), 1)
+            self.assertFalse((workspace / "walker/evidence/extracted").exists())
 
     def test_import_page_lists_existing_sources_with_reprocess_button(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -139,7 +171,7 @@ class ImportRouteTest(unittest.TestCase):
 
             self.assertEqual(response.status_code, 200)
             self.assertIn(source.id, response.text)
-            self.assertIn("重新抽取", response.text)
+            self.assertIn("重新解析原始檔", response.text)
 
     def test_reprocess_source_route_updates_existing_source(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -153,10 +185,10 @@ class ImportRouteTest(unittest.TestCase):
 
             self.assertEqual(response.status_code, 200)
             self.assertIn("已重新處理來源", response.text)
-            self.assertIn("Hello PDF Resume", response.text)
+            self.assertIn("已重新讀取原始檔", response.text)
 
             updated_source = EvidenceRepository(workspace / "walker").get_source(source.id)
-            self.assertEqual(updated_source.extraction_status, "completed")
+            self.assertEqual(updated_source.extraction_status, "not_required")
             self.assertIsNotNone(updated_source.content_hash)
 
     def _client_for(self, workspace: Path, openai_api_key: str = "") -> TestClient:

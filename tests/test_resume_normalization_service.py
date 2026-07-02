@@ -21,59 +21,57 @@ class FakeParser:
         )
 
 
+class FakeFileParser:
+    def parse_file(
+        self,
+        *,
+        filename: str,
+        content_type: str | None,
+        content: bytes,
+        source_id: str,
+    ) -> NormalizedResume:
+        return NormalizedResume(
+            sourceIds=[source_id],
+            name="Walker Lin",
+            skills=["Python", "FastAPI"],
+            summary=f"{filename}:{content_type}:{content.decode('utf-8')}",
+        )
+
+
 class FakeProviderParser:
     calls: list[tuple[str, str]] = []
 
-    def __init__(self, *, api_key: str, model: str) -> None:
+    def __init__(self, *, api_key: str, model: str, log_path: Path | None = None) -> None:
         self.api_key = api_key
         self.model = model
+        self.log_path = log_path
 
     def parse(self, *, extracted_text: str, source_id: str) -> NormalizedResume:
         self.calls.append((self.api_key, self.model))
         return NormalizedResume(sourceIds=[source_id], name=self.model)
 
 
-class IncompleteParser:
-    def parse(self, *, extracted_text: str, source_id: str) -> NormalizedResume:
-        return NormalizedResume(sourceIds=[source_id], name="Walker Lin")
-
-
 class ResumeNormalizationServiceTest(unittest.TestCase):
     def test_normalize_source_saves_resume_json(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
-            role_path = Path(tmpdir) / "workspace/walker"
-            extracted_path = role_path / "evidence/extracted/src_1.txt"
-            extracted_path.parent.mkdir(parents=True)
-            extracted_path.write_text("Senior Python Engineer", encoding="utf-8")
-            EvidenceRepository(role_path).add_source(
-                EvidenceSource(
-                    id="src_1",
-                    label="resume.txt",
-                    path="evidence/files/src_1_resume.txt",
-                    originalFilename="resume.txt",
-                    contentType="text/plain",
-                    sizeBytes=22,
-                    extractedTextPath="evidence/extracted/src_1.txt",
-                    extractionStatus="completed",
-                    createdAt=datetime(2026, 7, 1, tzinfo=timezone.utc),
-                )
-            )
+            role_path = self._role_with_source_file(Path(tmpdir))
 
             result = ResumeNormalizationService(
                 role_path=role_path,
                 api_key=None,
                 model="test-model",
-                parser=FakeParser(),
+                parser=FakeFileParser(),
             ).normalize_source("src_1")
 
             self.assertEqual(result.status, "completed")
             loaded = ResumeRepository(role_path).load()
             self.assertEqual(loaded.name, "Walker Lin")
             self.assertEqual(loaded.skills, ["Python", "FastAPI"])
+            self.assertIn("resume.txt:text/plain", loaded.summary)
 
     def test_missing_api_key_returns_error_without_parser(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
-            role_path = self._role_with_extracted_source(Path(tmpdir))
+            role_path = self._role_with_source_file(Path(tmpdir))
 
             result = ResumeNormalizationService(
                 role_path=role_path,
@@ -86,7 +84,7 @@ class ResumeNormalizationServiceTest(unittest.TestCase):
 
     def test_uses_openai_when_openai_key_exists(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
-            role_path = self._role_with_extracted_source(Path(tmpdir))
+            role_path = self._role_with_source_file(Path(tmpdir))
             FakeProviderParser.calls = []
 
             with patch(
@@ -106,7 +104,7 @@ class ResumeNormalizationServiceTest(unittest.TestCase):
 
     def test_uses_gemini_when_only_gemini_key_exists(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
-            role_path = self._role_with_extracted_source(Path(tmpdir))
+            role_path = self._role_with_source_file(Path(tmpdir))
             FakeProviderParser.calls = []
 
             with patch(
@@ -124,33 +122,15 @@ class ResumeNormalizationServiceTest(unittest.TestCase):
             self.assertEqual(result.status, "completed")
             self.assertEqual(FakeProviderParser.calls, [("gemini-key", "gemini-model")])
 
-    def test_incomplete_ai_result_fails_without_writing_resume(self) -> None:
-        with tempfile.TemporaryDirectory() as tmpdir:
-            role_path = self._role_with_extracted_source(
-                Path(tmpdir),
-                extracted_text="SKILLS\nAngular\nEXPERIENCE\nEngineer\nPROJECTS\nWEBA",
-            )
-
-            result = ResumeNormalizationService(
-                role_path=role_path,
-                api_key=None,
-                model="test-model",
-                parser=IncompleteParser(),
-            ).normalize_source("src_1")
-
-            self.assertEqual(result.status, "failed")
-            self.assertIn("missing expected sections", result.message)
-            self.assertFalse((role_path / "evidence/resume.json").exists())
-
-    def _role_with_extracted_source(
+    def _role_with_source_file(
         self,
         root: Path,
-        extracted_text: str = "Senior Python Engineer",
+        content: str = "Senior Python Engineer",
     ) -> Path:
         role_path = root / "workspace/walker"
-        extracted_path = role_path / "evidence/extracted/src_1.txt"
-        extracted_path.parent.mkdir(parents=True)
-        extracted_path.write_text(extracted_text, encoding="utf-8")
+        source_path = role_path / "evidence/files/src_1_resume.txt"
+        source_path.parent.mkdir(parents=True)
+        source_path.write_text(content, encoding="utf-8")
         EvidenceRepository(role_path).add_source(
             EvidenceSource(
                 id="src_1",
@@ -159,8 +139,7 @@ class ResumeNormalizationServiceTest(unittest.TestCase):
                 originalFilename="resume.txt",
                 contentType="text/plain",
                 sizeBytes=22,
-                extractedTextPath="evidence/extracted/src_1.txt",
-                extractionStatus="completed",
+                extractionStatus="not_required",
                 createdAt=datetime(2026, 7, 1, tzinfo=timezone.utc),
             )
         )

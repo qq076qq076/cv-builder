@@ -552,7 +552,7 @@ class AIClient(Protocol):
 
 - Dashboard：依 workspace status 顯示首次使用引導、上傳提示、職涯資料摘要、最近生成履歷與最近職缺。
 - Workspace：建立 / 選擇 / 匯出工作區。
-- Import：上傳檔案並預覽解析文字。
+- Import：上傳檔案，將原始檔直接交給 AI 解析並寫回結構化履歷資料。
 - Career KB：編輯個人資訊、經歷、技能、專案。
 - Jobs：貼上職缺描述，查看 AI 解析結果。
 - Generate：選擇職缺與風格，生成履歷 / Cover Letter / 面試準備。
@@ -645,8 +645,9 @@ MVP 優先測核心邏輯，不追求高覆蓋率。
 - Dashboard 在有資料時顯示個人資訊、經歷、技能、專案與已生成輸出摘要。
 - atomic write 不破壞原檔。
 - JSON repository 可讀寫並通過 schema validation。
-- importers 能處理 PDF / DOCX / TXT / Markdown。
-- AI prompt 輸入組合不包含不必要資料。
+- AI 解析能直接處理 PDF / DOCX / TXT / Markdown 原始檔。
+- AI prompt / 檔案輸入組合不包含不必要資料。
+- AI input / output 會寫入角色底下的 `logs/ai-parser.jsonl` 供除錯。
 - generation service 能產生 Markdown output。
 
 ## 可後補
@@ -665,7 +666,7 @@ MVP 優先測核心邏輯，不追求高覆蓋率。
 4. 建立 Pydantic schemas。
 5. 建立 repositories。
 6. 建立 Dashboard / Workspace 基本頁，先完成 `NO_WORKSPACE` 與 `EMPTY_WORKSPACE`。
-7. 建立檔案匯入與文字抽取。
+7. 建立檔案匯入與原始檔直送 AI 解析。
 8. 建立 Career KB 編輯頁，完成 `HAS_CAREER_DATA` Dashboard。
 9. 建立 Job Description 貼上與 AI 分析。
 10. 建立履歷生成與 Markdown 輸出，完成 `HAS_GENERATED_OUTPUTS` Dashboard。

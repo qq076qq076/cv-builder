@@ -26,23 +26,17 @@ class ImportServiceTest(unittest.TestCase):
             self.assertEqual(saved_upload.saved_path.read_bytes(), b"hello")
             self.assertTrue(saved_upload.source.path.startswith("evidence/files/src_"))
             self.assertTrue(saved_upload.source.path.endswith("_My-Resume.txt"))
-            self.assertEqual(saved_upload.source.extraction_status, "completed")
-            self.assertEqual(saved_upload.extracted_text, "hello")
-            self.assertIsNotNone(saved_upload.source.extracted_text_path)
-            self.assertTrue((workspace / saved_upload.source.extracted_text_path).is_file())
-            self.assertEqual(
-                (workspace / saved_upload.source.extracted_text_path).read_text(encoding="utf-8"),
-                "hello",
-            )
+            self.assertEqual(saved_upload.source.extraction_status, "not_required")
+            self.assertIsNone(saved_upload.source.extracted_text_path)
 
             sources = EvidenceRepository(workspace).list_sources()
             self.assertEqual(len(sources.sources), 1)
             self.assertEqual(sources.sources[0].id, saved_upload.source.id)
             self.assertEqual(sources.sources[0].size_bytes, 5)
             self.assertEqual(sources.sources[0].content_hash, sha256(b"hello").hexdigest())
-            self.assertEqual(sources.sources[0].extraction_status, "completed")
+            self.assertEqual(sources.sources[0].extraction_status, "not_required")
 
-    def test_save_pdf_extracts_text(self) -> None:
+    def test_save_pdf_does_not_extract_text(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             workspace = Path(tmpdir) / "workspace"
             service = ImportService(workspace)
@@ -53,9 +47,9 @@ class ImportServiceTest(unittest.TestCase):
                 content=SIMPLE_TEXT_PDF,
             )
 
-            self.assertEqual(saved_upload.source.extraction_status, "completed")
-            self.assertIsNotNone(saved_upload.source.extracted_text_path)
-            self.assertIn("Hello PDF Resume", saved_upload.extracted_text)
+            self.assertEqual(saved_upload.source.extraction_status, "not_required")
+            self.assertIsNone(saved_upload.source.extracted_text_path)
+            self.assertFalse((workspace / "evidence/extracted").exists())
 
     def test_duplicate_content_reuses_existing_source_without_extracting(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -78,7 +72,7 @@ class ImportServiceTest(unittest.TestCase):
             self.assertEqual(second_upload.source.id, first_upload.source.id)
             self.assertEqual(len(EvidenceRepository(workspace).list_sources().sources), 1)
             self.assertEqual(len(list((workspace / "evidence/files").iterdir())), 1)
-            self.assertEqual(len(list((workspace / "evidence/extracted").iterdir())), 1)
+            self.assertFalse((workspace / "evidence/extracted").exists())
 
     def test_duplicate_content_matches_existing_source_without_content_hash(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -108,7 +102,7 @@ class ImportServiceTest(unittest.TestCase):
             self.assertEqual(saved_upload.source.id, "src_old")
             self.assertEqual(len(EvidenceRepository(workspace).list_sources().sources), 1)
 
-    def test_invalid_pdf_is_saved_with_failed_extraction_status(self) -> None:
+    def test_invalid_pdf_is_saved_without_extraction(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             workspace = Path(tmpdir) / "workspace"
             service = ImportService(workspace)
@@ -120,10 +114,10 @@ class ImportServiceTest(unittest.TestCase):
             )
 
             self.assertTrue(saved_upload.saved_path.is_file())
-            self.assertEqual(saved_upload.source.extraction_status, "failed")
+            self.assertEqual(saved_upload.source.extraction_status, "not_required")
             self.assertIsNone(saved_upload.source.extracted_text_path)
 
-    def test_reprocess_source_extracts_existing_pdf_and_updates_source(self) -> None:
+    def test_reprocess_source_updates_hash_without_extracting(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             workspace = Path(tmpdir) / "workspace"
             existing_path = workspace / "evidence/files/src_old_resume.pdf"
@@ -144,13 +138,12 @@ class ImportServiceTest(unittest.TestCase):
             saved_upload = ImportService(workspace).reprocess_source("src_old")
 
             self.assertIsNotNone(saved_upload)
-            self.assertEqual(saved_upload.source.extraction_status, "completed")
+            self.assertEqual(saved_upload.source.extraction_status, "not_required")
             self.assertIsNotNone(saved_upload.source.content_hash)
-            self.assertEqual(saved_upload.source.extracted_text_path, "evidence/extracted/src_old.txt")
-            self.assertIn("Hello PDF Resume", saved_upload.extracted_text)
+            self.assertIsNone(saved_upload.source.extracted_text_path)
 
             updated_source = EvidenceRepository(workspace).get_source("src_old")
-            self.assertEqual(updated_source.extraction_status, "completed")
+            self.assertEqual(updated_source.extraction_status, "not_required")
             self.assertIsNotNone(updated_source.content_hash)
 
     def test_reprocess_missing_source_returns_none(self) -> None:

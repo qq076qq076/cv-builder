@@ -1,7 +1,15 @@
 import json
+import tempfile
 import unittest
+from contextlib import redirect_stdout
+from io import StringIO
+from pathlib import Path
 
-from app.ai.resume_parser import _extract_gemini_response_json, build_resume_parse_prompt
+from app.ai.resume_parser import (
+    _debug_log_ai_payload,
+    _extract_gemini_response_json,
+    build_resume_parse_prompt,
+)
 
 
 class GeminiResponseParserTest(unittest.TestCase):
@@ -50,6 +58,24 @@ class GeminiResponseParserTest(unittest.TestCase):
         self.assertIn("Experience: create one item per job", prompt)
         self.assertIn("Projects: create one item per project", prompt)
         self.assertIn("Walker Lin", prompt)
+
+    def test_debug_logger_writes_jsonl_file(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            log_path = Path(tmpdir) / "logs/ai-parser.jsonl"
+
+            with redirect_stdout(StringIO()):
+                _debug_log_ai_payload("AI input", {"model": "test"}, log_path)
+                _debug_log_ai_payload("AI output", '{"name":"Walker"}', log_path)
+
+            entries = [
+                json.loads(line)
+                for line in log_path.read_text(encoding="utf-8").splitlines()
+            ]
+
+        self.assertEqual(entries[0]["label"], "AI input")
+        self.assertEqual(entries[0]["payload"], {"model": "test"})
+        self.assertEqual(entries[1]["label"], "AI output")
+        self.assertEqual(entries[1]["payload"], '{"name":"Walker"}')
 
 
 if __name__ == "__main__":

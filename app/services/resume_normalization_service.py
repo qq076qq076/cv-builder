@@ -40,26 +40,26 @@ class ResumeNormalizationService:
         source = self.evidence_repository.get_source(source_id)
         if source is None:
             return ResumeNormalizationResult(status="not_found", message="找不到來源")
-        if source.extracted_text_path is None:
-            return ResumeNormalizationResult(
-                status="no_text",
-                message="來源尚未完成文字抽取",
-            )
         if not self.api_key and not self.gemini_api_key and self.parser is None:
             return ResumeNormalizationResult(
                 status="missing_api_key",
                 message="缺少 OPENAI_API_KEY 或 GEMINI_API_KEY",
             )
 
-        extracted_path = self.role_path / source.extracted_text_path
-        if not extracted_path.is_file():
-            return ResumeNormalizationResult(status="no_text", message="找不到抽取文字檔")
+        source_path = self.role_path / source.path
+        if not source_path.is_file():
+            return ResumeNormalizationResult(status="no_text", message="找不到來源檔案")
 
-        extracted_text = extracted_path.read_text(encoding="utf-8")
         parser = self.parser or self._build_parser()
         try:
-            resume = parser.parse(extracted_text=extracted_text, source_id=source.id)
-            _validate_resume_completeness(extracted_text, resume)
+            content = source_path.read_bytes()
+            resume = _parse_source_file(
+                parser=parser,
+                filename=source.original_filename,
+                content_type=source.content_type,
+                content=content,
+                source_id=source.id,
+            )
         except Exception as exc:
             return ResumeNormalizationResult(
                 status="failed",
@@ -72,21 +72,36 @@ class ResumeNormalizationService:
 
     def _build_parser(self) -> ResumeParser:
         if self.api_key:
-            return OpenAIResumeParser(api_key=self.api_key, model=self.model)
-        return GeminiResumeParser(api_key=self.gemini_api_key or "", model=self.gemini_model)
+            return OpenAIResumeParser(
+                api_key=self.api_key,
+                model=self.model,
+                log_path=self.role_path / "logs/ai-parser.jsonl",
+            )
+        return GeminiResumeParser(
+            api_key=self.gemini_api_key or "",
+            model=self.gemini_model,
+            log_path=self.role_path / "logs/ai-parser.jsonl",
+        )
 
 
-def _validate_resume_completeness(extracted_text: str, resume: NormalizedResume) -> None:
-    missing = []
-    normalized_text = extracted_text.upper()
-    if "SKILLS" in normalized_text and not resume.skills:
-        missing.append("skills")
-    if "EXPERIENCE" in normalized_text and not resume.experiences:
-        missing.append("experiences")
-    if "PROJECTS" in normalized_text and not resume.projects:
-        missing.append("projects")
-    if "LANGUAGES" in normalized_text and not resume.languages:
-        missing.append("languages")
+def _parse_source_file(
+    *,
+    parser: ResumeParser,
+    filename: str,
+    content_type: str | None,
+    content: bytes,
+    source_id: str,
+) -> NormalizedResume:
+    parse_file = getattr(parser, "parse_file", None)
+    if callable(parse_file):
+        return parse_file(
+            filename=filename,
+            content_type=content_type,
+            content=content,
+            source_id=source_id,
+        )
 
-    if missing:
-        raise ValueError(f"AI result missing expected sections: {', '.join(missing)}")
+    return parser.parse(
+        extracted_text=content.decode("utf-8", errors="ignore"),
+        source_id=source_id,
+    )
