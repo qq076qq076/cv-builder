@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from urllib.parse import quote
 
-from fastapi import APIRouter, Form, Request, status
+from fastapi import APIRouter, File, Form, Request, UploadFile, status
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
@@ -22,8 +22,12 @@ from app.schemas.resume import (
     ResumeProject,
 )
 from app.services.job_service import JobService
+from app.services.import_service import ImportService
 from app.services.role_service import RoleService
-from app.services.resume_normalization_service import ResumeNormalizationService
+from app.services.resume_normalization_service import (
+    ResumeNormalizationResult,
+    ResumeNormalizationService,
+)
 from app.storage.evidence import EvidenceRepository
 from app.storage.resume import ResumeRepository
 
@@ -104,6 +108,110 @@ def update_role_profile(
         ),
     )
     return RedirectResponse(f"/roles/{role_id}", status_code=status.HTTP_303_SEE_OTHER)
+
+
+@router.post("/roles/{role_id}/initialize", response_class=HTMLResponse)
+async def initialize_role_sources(
+    request: Request,
+    role_id: str,
+    resume_file: UploadFile | None = File(default=None),
+    source_url: list[str] = Form(default=[]),
+) -> HTMLResponse:
+    settings = get_settings()
+    role_service = RoleService(settings.workspace_path)
+    role = role_service.get_role(role_id)
+    if role is None:
+        return templates.TemplateResponse(
+            request,
+            "role_not_found.html",
+            context={"request": request, "role_id": role_id},
+            status_code=404,
+        )
+
+    role_path = role_service.role_path(role_id)
+    source_ids = await _save_submitted_sources(
+        role_path=role_path,
+        resume_file=resume_file,
+        source_url=source_url,
+    )
+
+    if not source_ids:
+        result = ResumeNormalizationResult(status="not_found", message="請至少提供一個檔案或網址")
+        return _render_role_detail(
+            request=request,
+            role=role,
+            role_id=role_id,
+            role_path=role_path,
+            role_service=role_service,
+            normalization_result=result,
+        )
+
+    result = ResumeNormalizationService(
+        role_path=role_path,
+        api_key=settings.openai_api_key,
+        model=settings.openai_model,
+        gemini_api_key=settings.gemini_api_key,
+        gemini_model=settings.gemini_model,
+    ).normalize_sources(source_ids)
+    if result.status == "completed" and result.resume is not None:
+        role_service.sync_profile_from_resume(role_id, result.resume)
+        result = ResumeNormalizationResult(
+            status="completed",
+            resume=result.resume,
+            message=f"已整合 {len(source_ids)} 筆來源並完成初始化。",
+        )
+
+    return _render_role_detail(
+        request=request,
+        role=role,
+        role_id=role_id,
+        role_path=role_path,
+        role_service=role_service,
+        normalization_result=result,
+    )
+
+
+@router.post("/roles/{role_id}/sources", response_class=HTMLResponse)
+async def update_role_sources(
+    request: Request,
+    role_id: str,
+    resume_file: UploadFile | None = File(default=None),
+    source_url: list[str] = Form(default=[]),
+) -> HTMLResponse:
+    settings = get_settings()
+    role_service = RoleService(settings.workspace_path)
+    role = role_service.get_role(role_id)
+    if role is None:
+        return templates.TemplateResponse(
+            request,
+            "role_not_found.html",
+            context={"request": request, "role_id": role_id},
+            status_code=404,
+        )
+
+    role_path = role_service.role_path(role_id)
+    saved_source_ids = await _save_submitted_sources(
+        role_path=role_path,
+        resume_file=resume_file,
+        source_url=source_url,
+    )
+    message = (
+        f"已更新 {len(saved_source_ids)} 筆來源。"
+        if saved_source_ids
+        else "請至少提供一個檔案或網址"
+    )
+    result = ResumeNormalizationResult(
+        status="completed" if saved_source_ids else "not_found",
+        message=message,
+    )
+    return _render_role_detail(
+        request=request,
+        role=role,
+        role_id=role_id,
+        role_path=role_path,
+        role_service=role_service,
+        normalization_result=result,
+    )
 
 
 @router.post("/roles/{role_id}/resume/profile")
@@ -356,10 +464,80 @@ def normalize_source(request: Request, role_id: str, source_id: str) -> HTMLResp
     ).normalize_source(source_id)
     if result.status == "completed" and result.resume is not None:
         role_service.sync_profile_from_resume(role_id, result.resume)
+    return _render_role_detail(
+        request=request,
+        role=role,
+        role_id=role_id,
+        role_path=role_path,
+        role_service=role_service,
+        normalization_result=result,
+    )
+
+
+@router.post("/roles/{role_id}/sources/normalize", response_class=HTMLResponse)
+def normalize_all_sources(request: Request, role_id: str) -> HTMLResponse:
+    settings = get_settings()
+    role_service = RoleService(settings.workspace_path)
+    role = role_service.get_role(role_id)
+    if role is None:
+        return templates.TemplateResponse(
+            request,
+            "role_not_found.html",
+            context={"request": request, "role_id": role_id},
+            status_code=404,
+        )
+
+    role_path = role_service.role_path(role_id)
+    sources = EvidenceRepository(role_path).list_sources().sources
+    if not sources:
+        result = ResumeNormalizationResult(status="not_found", message="目前沒有可解析的來源")
+        return _render_role_detail(
+            request=request,
+            role=role,
+            role_id=role_id,
+            role_path=role_path,
+            role_service=role_service,
+            normalization_result=result,
+        )
+
+    service = ResumeNormalizationService(
+        role_path=role_path,
+        api_key=settings.openai_api_key,
+        model=settings.openai_model,
+        gemini_api_key=settings.gemini_api_key,
+        gemini_model=settings.gemini_model,
+    )
+    result = service.normalize_sources([source.id for source in sources])
+    if result.status == "completed" and result.resume is not None:
+        role_service.sync_profile_from_resume(role_id, result.resume)
+        result = ResumeNormalizationResult(
+            status="completed",
+            resume=result.resume,
+            message=f"已整合 {len(sources)} 筆 Evidence 來源。",
+        )
+
+    return _render_role_detail(
+        request=request,
+        role=role,
+        role_id=role_id,
+        role_path=role_path,
+        role_service=role_service,
+        normalization_result=result,
+    )
+
+
+def _render_role_detail(
+    *,
+    request: Request,
+    role,
+    role_id: str,
+    role_path,
+    role_service: RoleService,
+    normalization_result,
+) -> HTMLResponse:
     profile = role_service.load_profile(role_id)
     resume = ResumeRepository(role_path).load()
     job_service = JobService(role_path)
-
     return templates.TemplateResponse(
         request,
         "role_detail.html",
@@ -375,7 +553,7 @@ def normalize_source(request: Request, role_id: str, source_id: str) -> HTMLResp
             "generated_output": None,
             "generated_error": None,
             "active_generated_output": None,
-            "normalization_result": result,
+            "normalization_result": normalization_result,
             "edit": _resume_edit_context(resume),
         },
     )
@@ -419,6 +597,30 @@ def _resume_repository_for_role(role_id: str) -> ResumeRepository:
     settings = get_settings()
     role_service = RoleService(settings.workspace_path)
     return ResumeRepository(role_service.role_path(role_id))
+
+
+async def _save_submitted_sources(
+    *,
+    role_path,
+    resume_file: UploadFile | None,
+    source_url: list[str],
+) -> list[str]:
+    import_service = ImportService(role_path)
+    source_ids = []
+
+    if resume_file is not None and resume_file.filename:
+        saved_upload = import_service.save_uploaded_file(
+            filename=resume_file.filename,
+            content_type=resume_file.content_type,
+            content=await resume_file.read(),
+        )
+        source_ids.append(saved_upload.source.id)
+
+    for url in _clean_list(source_url):
+        saved_url = import_service.save_url_source(url=url)
+        source_ids.append(saved_url.source.id)
+
+    return source_ids
 
 
 def _split_lines(value: str) -> list[str]:

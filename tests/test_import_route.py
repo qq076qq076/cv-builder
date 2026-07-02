@@ -49,16 +49,14 @@ class FakeOpenAIResumeParser:
 
 
 class ImportRouteTest(unittest.TestCase):
-    def test_import_page_exists(self) -> None:
+    def test_role_import_page_is_removed(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             workspace = Path(tmpdir) / "workspace"
             RoleService(workspace).create_role("Walker")
 
             response = self._client_for(workspace).get("/roles/walker/import")
 
-        self.assertEqual(response.status_code, 200)
-        self.assertIn("上傳履歷：Walker", response.text)
-        self.assertIn("/roles/walker/import/files", response.text)
+        self.assertEqual(response.status_code, 404)
 
     def test_legacy_import_redirects_home(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -77,11 +75,11 @@ class ImportRouteTest(unittest.TestCase):
             response = self._client_for(workspace).post(
                 "/roles/walker/import/files",
                 files={"resume_file": ("resume.txt", b"hello", "text/plain")},
+                follow_redirects=False,
             )
 
-            self.assertEqual(response.status_code, 200)
-            self.assertIn("已保存檔案", response.text)
-            self.assertIn("resume.txt", response.text)
+            self.assertEqual(response.status_code, 303)
+            self.assertEqual(response.headers["location"], "/roles/walker")
             self.assertTrue((workspace / "walker/evidence/sources.json").is_file())
             self.assertEqual(len(list((workspace / "walker/evidence/files").iterdir())), 1)
             self.assertFalse((workspace / "walker/evidence/extracted").exists())
@@ -98,10 +96,10 @@ class ImportRouteTest(unittest.TestCase):
                 response = self._client_for(workspace, openai_api_key="test-key").post(
                     "/roles/walker/import/files",
                     files={"resume_file": ("resume.txt", b"Senior Python Engineer", "text/plain")},
+                    follow_redirects=False,
                 )
 
-            self.assertEqual(response.status_code, 200)
-            self.assertIn("已透過 AI 解析並回寫履歷資料", response.text)
+            self.assertEqual(response.status_code, 303)
             resume = ResumeRepository(workspace / "walker").load()
             self.assertEqual(resume.name, "Walker Lin")
             profile = RoleService(workspace).load_profile("walker")
@@ -116,10 +114,10 @@ class ImportRouteTest(unittest.TestCase):
             response = self._client_for(workspace).post(
                 "/roles/walker/import/files",
                 files={"resume_file": ("resume.pdf", SIMPLE_TEXT_PDF, "application/pdf")},
+                follow_redirects=False,
             )
 
-            self.assertEqual(response.status_code, 200)
-            self.assertIn("已保存檔案", response.text)
+            self.assertEqual(response.status_code, 303)
             self.assertFalse((workspace / "walker/evidence/extracted").exists())
 
     def test_upload_pdf_auto_normalizes_from_original_file(self) -> None:
@@ -134,9 +132,10 @@ class ImportRouteTest(unittest.TestCase):
                 response = self._client_for(workspace, openai_api_key="test-key").post(
                     "/roles/walker/import/files",
                     files={"resume_file": ("resume.pdf", SIMPLE_TEXT_PDF, "application/pdf")},
+                    follow_redirects=False,
                 )
 
-            self.assertEqual(response.status_code, 200)
+            self.assertEqual(response.status_code, 303)
             resume = ResumeRepository(workspace / "walker").load()
             self.assertEqual(resume.name, "Walker Lin")
             self.assertIn("resume.pdf:application/pdf", resume.summary)
@@ -150,29 +149,28 @@ class ImportRouteTest(unittest.TestCase):
             first_response = client.post(
                 "/roles/walker/import/files",
                 files={"resume_file": ("resume.txt", b"same", "text/plain")},
+                follow_redirects=False,
             )
             second_response = client.post(
                 "/roles/walker/import/files",
                 files={"resume_file": ("copy.txt", b"same", "text/plain")},
+                follow_redirects=False,
             )
 
-            self.assertEqual(first_response.status_code, 200)
-            self.assertEqual(second_response.status_code, 200)
-            self.assertIn("內容已存在", second_response.text)
+            self.assertEqual(first_response.status_code, 303)
+            self.assertEqual(second_response.status_code, 303)
             self.assertEqual(len(list((workspace / "walker/evidence/files").iterdir())), 1)
             self.assertFalse((workspace / "walker/evidence/extracted").exists())
 
-    def test_import_page_lists_existing_sources_with_reprocess_button(self) -> None:
+    def test_removed_import_page_does_not_list_existing_sources(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             workspace = Path(tmpdir) / "workspace"
             RoleService(workspace).create_role("Walker")
-            source = self._create_legacy_pdf_source(workspace / "walker")
+            self._create_legacy_pdf_source(workspace / "walker")
 
             response = self._client_for(workspace).get("/roles/walker/import")
 
-            self.assertEqual(response.status_code, 200)
-            self.assertIn(source.id, response.text)
-            self.assertIn("重新解析原始檔", response.text)
+            self.assertEqual(response.status_code, 404)
 
     def test_reprocess_source_route_updates_existing_source(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -182,11 +180,11 @@ class ImportRouteTest(unittest.TestCase):
 
             response = self._client_for(workspace).post(
                 f"/roles/walker/import/sources/{source.id}/reprocess",
+                follow_redirects=False,
             )
 
-            self.assertEqual(response.status_code, 200)
-            self.assertIn("已重新處理來源", response.text)
-            self.assertIn("已重新讀取原始檔", response.text)
+            self.assertEqual(response.status_code, 303)
+            self.assertEqual(response.headers["location"], "/roles/walker")
 
             updated_source = EvidenceRepository(workspace / "walker").get_source(source.id)
             self.assertEqual(updated_source.extraction_status, "not_required")

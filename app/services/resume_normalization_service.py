@@ -79,6 +79,73 @@ class ResumeNormalizationService:
 
         return ResumeNormalizationResult(status="completed", resume=saved_resume)
 
+    def normalize_sources(self, source_ids: list[str]) -> ResumeNormalizationResult:
+        sources = [
+            source
+            for source_id in source_ids
+            if (source := self.evidence_repository.get_source(source_id)) is not None
+        ]
+        if not sources:
+            return ResumeNormalizationResult(status="not_found", message="目前沒有可解析的來源")
+        if not self.api_key and not self.gemini_api_key and self.parser is None:
+            return ResumeNormalizationResult(
+                status="missing_api_key",
+                message="缺少 OPENAI_API_KEY 或 GEMINI_API_KEY",
+            )
+
+        source_sections = []
+        for source in sources:
+            source_path = self.role_path / source.path
+            if not source_path.is_file():
+                continue
+
+            content = source_path.read_bytes()
+            extracted_text = _extract_supplemental_text(
+                filename=source.original_filename,
+                content_type=source.content_type,
+                content=content,
+            )
+            source_text = extracted_text or content.decode("utf-8", errors="ignore").strip()
+            if not source_text:
+                source_text = f"[無法抽取文字；來源檔案：{source.original_filename}]"
+
+            source_sections.append(
+                "\n".join(
+                    [
+                        f"## Source ID: {source.id}",
+                        f"Label: {source.label}",
+                        f"Type: {source.type}",
+                        "",
+                        source_text,
+                    ]
+                )
+            )
+
+        if not source_sections:
+            return ResumeNormalizationResult(status="no_text", message="找不到來源檔案")
+
+        combined_source_id = ",".join(source.id for source in sources)
+        combined_text = (
+            "請整合以下多個來源，去除重複資訊，保留所有可驗證事實，"
+            "輸出一份一致的結構化履歷資料。\n\n"
+            + "\n\n---\n\n".join(source_sections)
+        )
+
+        parser = self.parser or self._build_parser()
+        try:
+            resume = parser.parse(extracted_text=combined_text, source_id=combined_source_id)
+            resume = resume.model_copy(update={"source_ids": [source.id for source in sources]})
+            _validate_resume_detail(resume)
+        except Exception as exc:
+            return ResumeNormalizationResult(
+                status="failed",
+                message=f"履歷解析失敗：{exc}",
+            )
+
+        saved_resume = self.resume_repository.save(resume)
+
+        return ResumeNormalizationResult(status="completed", resume=saved_resume)
+
     def _build_parser(self) -> ResumeParser:
         if self.api_key:
             return OpenAIResumeParser(

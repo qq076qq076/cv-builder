@@ -20,15 +20,12 @@
         <h1>{{ role.name }}</h1>
         <p>UID: {{ role.id }} // NODE_STATUS: {% if has_role_content %}ACTIVE{% else %}INITIALIZE{% endif %}</p>
       </div>
-      {% if has_role_content %}
-        <a class="app-button app-button-accent" href="/roles/{{ role.id }}/import">上傳履歷</a>
-      {% endif %}
     </section>
 
     {% if normalization_result %}
       <div class="app-notice {% if normalization_result.status != 'completed' %}app-notice-muted{% endif %}">
         {% if normalization_result.status == "completed" %}
-          已解析並儲存履歷資料。
+          {{ normalization_result.message or "已解析並儲存履歷資料。" }}
         {% else %}
           {{ normalization_result.message }}
         {% endif %}
@@ -37,22 +34,82 @@
 
     {% if not has_role_content %}
       <section class="role-initialize">
-        <div class="role-stepper">
-          <span>步驟 01：個人資料注入</span>
-          <i></i>
-          <span>步驟 02：角色驗證</span>
+        <div class="initialize-copy">
+          <div class="role-stepper">
+            <span>步驟 01：個人資料注入</span>
+            <i></i>
+            <span>步驟 02：角色驗證</span>
+          </div>
+          <div class="app-hero-copy">
+            <p class="app-kicker">Initialize profile core</p>
+            <h1>初始化{{ role.name }}角色：上傳或匯入</h1>
+            <p>尚未建立個人資訊。為開始評估流程並生成履歷資料核心，請上傳候選人的履歷檔案，或輸入可參考的公開資料網址。</p>
+          </div>
         </div>
-        <div class="app-hero-copy">
-          <h1>初始化{{ role.name }}角色</h1>
-          <p>尚未建立個人資訊。請先上傳履歷，系統會直接把原始檔交給 AI 解析成結構化履歷資料。</p>
+        <div class="initialize-console">
+          <form class="initialize-upload-card" method="post" action="/roles/{{ role.id }}/initialize" enctype="multipart/form-data">
+            <div class="scan-line" aria-hidden="true"></div>
+            <div class="initialize-upload-panel">
+              <span class="material-symbols-outlined upload-panel-icon">upload_file</span>
+              <h2>檔案上傳</h2>
+              <p>拖放或選擇 PDF、DOCX、TXT、Markdown 履歷檔案。開始初始化後會和網址來源一起交給 AI 整合成角色資料。</p>
+              <label class="initialize-file-picker">
+                <span>選擇檔案</span>
+                <input name="resume_file" type="file" accept=".pdf,.docx,.txt,.md,.markdown">
+              </label>
+            </div>
+
+            <div class="initialize-import-panel">
+              <span class="material-symbols-outlined upload-panel-icon upload-panel-icon-secondary">link</span>
+              <h2>連結匯入</h2>
+              <div class="initialize-link-grid">
+                <label>
+                  <span><span class="material-symbols-outlined">share</span>LinkedIn</span>
+                  <input name="source_url" type="url" placeholder="https://www.linkedin.com/in/...">
+                </label>
+                <label>
+                  <span><span class="material-symbols-outlined">work</span>104 銀行</span>
+                  <input name="source_url" type="url" placeholder="https://www.104.com.tw/profile/...">
+                </label>
+                <label>
+                  <span><span class="material-symbols-outlined">cake</span>CakeResume</span>
+                  <input name="source_url" type="url" placeholder="https://www.cake.me/...">
+                </label>
+                <label>
+                  <span><span class="material-symbols-outlined">rocket_launch</span>Yourator</span>
+                  <input name="source_url" type="url" placeholder="https://www.yourator.co/...">
+                </label>
+              </div>
+            </div>
+
+            <div class="initialize-console-footer">
+              <span><span class="material-symbols-outlined">security</span>本機工作區保存</span>
+              <span><span class="material-symbols-outlined">memory</span>AI 解析就緒</span>
+              <small>workspace/{{ role.id }}/evidence</small>
+            </div>
+            <div class="initialize-submit-row">
+              <button class="app-button app-button-primary" type="submit">開始初始化</button>
+            </div>
+          </form>
+
+          <div class="initialize-feature-grid">
+            <article>
+              <span class="material-symbols-outlined">analytics</span>
+              <h3>即時能力差距</h3>
+              <p>解析後可與目標職缺及既有履歷資料交叉比對，快速找出缺失的技能組合。</p>
+            </article>
+            <article>
+              <span class="material-symbols-outlined">psychology</span>
+              <h3>自動化面試實驗室</h3>
+              <p>結構化履歷會提供後續 AI 生成職缺回覆與面試素材使用。</p>
+            </article>
+            <article>
+              <span class="material-symbols-outlined">history_edu</span>
+              <h3>經歷正規化</h3>
+              <p>非標準職稱、技能與經歷會被整理成一致欄位，方便後續編輯與輸出。</p>
+            </article>
+          </div>
         </div>
-        <a class="app-upload-zone" href="/roles/{{ role.id }}/import">
-          <span class="upload-zone-icon">+</span>
-          <h2>上傳履歷以初始化角色數據</h2>
-          <p>將 PDF、TXT 或 Markdown 檔案加入此角色資料夾，解析後會建立技能、職涯與自傳資料。</p>
-          <strong>上傳履歷</strong>
-          <small>workspace/{{ role.id }}</small>
-        </a>
       </section>
     {% else %}
       <div class="role-layout">
@@ -623,33 +680,184 @@
       {% endif %}
     {% endif %}
 
-    <section class="app-panel app-section">
-      <div class="app-panel-heading">
-        <h2>Evidence 來源</h2>
-        <span>Source registry</span>
+    {% if has_role_content %}
+    <section class="app-panel app-section editable-panel evidence-manager" id="evidence">
+      <div class="app-panel-heading editable-heading evidence-manager-heading">
+        <span class="panel-title-group">
+          <span class="material-symbols-outlined panel-icon">database</span>
+          <span>
+            <h2>Evidence 來源 <span class="evidence-edit-mode-badge">EDIT MODE</span></h2>
+            <small>Multi-source registry</small>
+          </span>
+        </span>
+        <div class="evidence-actions">
+          <form class="evidence-normalize-form" method="post" action="/roles/{{ role.id }}/sources/normalize">
+            <button class="app-button app-button-accent" type="submit" {% if not sources %}disabled{% endif %}>
+              <span class="material-symbols-outlined">auto_fix_high</span>
+              解析資料
+            </button>
+          </form>
+        </div>
+      </div>
+
+      <details class="panel-editor evidence-source-editor">
+        <summary class="material-symbols-outlined edit-icon">edit</summary>
+        <form class="app-form edit-form evidence-source-edit-form" method="post" action="/roles/{{ role.id }}/sources" enctype="multipart/form-data">
+          <div class="edit-mode-actions" aria-label="Evidence 來源編輯操作">
+            <button class="edit-action edit-action-confirm" type="submit" title="儲存來源">
+              <span class="material-symbols-outlined">check_circle</span>
+            </button>
+            <button class="edit-action edit-action-cancel" type="button" title="取消編輯" onclick="this.closest('details').removeAttribute('open')">
+              <span class="material-symbols-outlined">cancel</span>
+            </button>
+          </div>
+          <label class="evidence-upload-dropzone">
+            <span class="evidence-upload-icon">
+              <span class="material-symbols-outlined">upload_file</span>
+            </span>
+            <strong>+ 上傳新檔案</strong>
+            <small>Drag and drop files here or click to browse. Supported formats: PDF, DOCX, TXT. Max size: 10MB.</small>
+            <input name="resume_file" type="file" accept=".pdf,.docx,.txt,.md,.markdown">
+          </label>
+
+          <div class="evidence-edit-section-heading">
+            <span class="material-symbols-outlined">link</span>
+            <strong>Platform Profiles</strong>
+          </div>
+
+          <div class="evidence-platform-grid">
+            <label class="evidence-platform-card evidence-platform-linkedin">
+              <span>
+                <span class="platform-mark platform-mark-linkedin">in</span>
+                <strong>LinkedIn</strong>
+              </span>
+              <input name="source_url" type="url" placeholder="https://www.linkedin.com/in/...">
+            </label>
+            <label class="evidence-platform-card evidence-platform-104">
+              <span>
+                <span class="platform-mark platform-mark-104">104</span>
+                <strong>104 銀行</strong>
+              </span>
+              <input name="source_url" type="url" placeholder="https://pda.104.com.tw/profile/...">
+            </label>
+            <label class="evidence-platform-card evidence-platform-cake">
+              <span>
+                <span class="platform-mark platform-mark-cake">C</span>
+                <strong>CakeResume</strong>
+              </span>
+              <input name="source_url" type="url" placeholder="https://cakeresume.com/...">
+            </label>
+            <label class="evidence-platform-card evidence-platform-yourator">
+              <span>
+                <span class="platform-mark platform-mark-yourator">Y</span>
+                <strong>Yourator</strong>
+              </span>
+              <input name="source_url" type="url" placeholder="https://yourator.co/p/...">
+            </label>
+          </div>
+
+          <div class="evidence-edit-section-heading">
+            <span class="material-symbols-outlined">inventory_2</span>
+            <strong>Uploaded Assets</strong>
+          </div>
+
+          {% if sources %}
+            <div class="evidence-source-grid evidence-source-edit-grid">
+              {% for source in sources %}
+                {% if source.type == "uploaded_file" or source.source_url %}
+                  <article class="evidence-source-card evidence-source-edit-card">
+                    <span class="source-type-icon">
+                      <span class="material-symbols-outlined">{% if source.type == "uploaded_file" %}description{% else %}link{% endif %}</span>
+                    </span>
+                    <span>
+                      <strong>{{ source.label }}</strong>
+                      <small>{% if source.type == "uploaded_file" %}{{ source.path }}{% else %}{{ source.source_url }}{% endif %}</small>
+                      <span class="source-meta-row">
+                        <span>{{ source.size_bytes }} bytes</span>
+                        <span>{{ source.created_at.strftime("%Y-%m-%d") }}</span>
+                        <span class="source-status source-status-{{ source.extraction_status }}">{{ source.extraction_status }}</span>
+                      </span>
+                    </span>
+                    <span class="source-status">{{ source.type }}</span>
+                  </article>
+                {% endif %}
+              {% endfor %}
+            </div>
+          {% else %}
+            <div class="empty-source-manager evidence-edit-empty">
+              <span class="material-symbols-outlined">add_circle</span>
+              <strong>尚未匯入任何來源</strong>
+            </div>
+          {% endif %}
+
+          <div class="app-actions">
+            <button class="app-button app-button-primary" type="submit">儲存來源</button>
+          </div>
+        </form>
+      </details>
+
+      <div class="evidence-summary read-view">
+        <div>
+          <strong>{{ sources|length }}</strong>
+          <span>來源總數</span>
+        </div>
+        <div>
+          <strong>{{ sources|selectattr("extraction_status", "equalto", "completed")|list|length }}</strong>
+          <span>已抽取</span>
+        </div>
+        <div>
+          <strong>{{ sources|selectattr("type", "equalto", "uploaded_file")|list|length }}</strong>
+          <span>上傳檔案</span>
+        </div>
       </div>
       {% if sources %}
-        <div class="app-source-list">
+        <div class="app-source-list evidence-source-grid read-view">
           {% for source in sources %}
-            <article class="app-source-item">
-              <div>
-                <h3>{{ source.label }}</h3>
-                <p>
-                  <code>{{ source.id }}</code>
-                  <br>
-                  原始檔：<code>{{ source.path }}</code>
-                </p>
-              </div>
-              <form method="post" action="/roles/{{ role.id }}/sources/{{ source.id }}/normalize">
-                <button class="app-button app-button-secondary" type="submit">解析成履歷資料</button>
-              </form>
-            </article>
+            {% if source.type == "uploaded_file" or source.source_url %}
+              <article class="app-source-item evidence-source-card">
+                <div class="source-type-icon">
+                  <span class="material-symbols-outlined">{% if source.type == "uploaded_file" %}description{% else %}link{% endif %}</span>
+                </div>
+                <div>
+                  <h3>{{ source.label }}</h3>
+                  {% if source.type == "uploaded_file" %}
+                    <p>
+                      <code>{{ source.id }}</code>
+                      <br>
+                      原始檔：<code>{{ source.path }}</code>
+                    </p>
+                  {% else %}
+                    <p>
+                      <code>{{ source.id }}</code>
+                      <br>
+                      網址：
+                      <a class="source-link" href="{{ source.source_url }}" target="_blank" rel="noopener noreferrer">{{ source.source_url }}</a>
+                    </p>
+                  {% endif %}
+                  <div class="source-meta-row">
+                    {% if source.type == "uploaded_file" %}
+                      <span>{{ source.original_filename }}</span>
+                    {% else %}
+                      <span>{{ source.type }}</span>
+                    {% endif %}
+                    <span>{{ source.size_bytes }} bytes</span>
+                    <span>{{ source.created_at.strftime("%Y-%m-%d") }}</span>
+                  </div>
+                </div>
+                <span class="source-status source-status-{{ source.extraction_status }}">{{ source.extraction_status }}</span>
+              </article>
+            {% endif %}
           {% endfor %}
         </div>
       {% else %}
-        <p>目前尚未匯入履歷或其他來源。</p>
+        <div class="empty-source-manager read-view">
+          <span class="material-symbols-outlined">add_circle</span>
+          <strong>尚未匯入任何來源</strong>
+          <p>使用上方編輯按鈕加入履歷或網址後，可在此管理多個 Evidence 來源並統一解析。</p>
+        </div>
       {% endif %}
     </section>
+    {% endif %}
   </section>
   <script>
     document.querySelectorAll("[data-add-repeatable]").forEach((button) => {

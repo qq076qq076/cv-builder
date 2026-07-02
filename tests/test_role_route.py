@@ -10,6 +10,7 @@ from fastapi.testclient import TestClient
 
 from app.main import create_app
 from app.schemas.evidence import EvidenceSource
+from app.schemas.resume import NormalizedResume
 from app.schemas.role import RoleProfile
 from app.services.role_service import RoleService
 from app.storage.evidence import EvidenceRepository
@@ -27,6 +28,43 @@ class FakeCoverLetterGenerator:
     def generate(self, *, resume, job, job_page_text: str = "") -> str:
         self.calls.append((self.api_key, self.model, resume.name, job.url, job_page_text))
         return f"我是 {resume.name}，針對 {job.url} 申請此職缺。"
+
+
+class FakeResumeNormalizationService:
+    calls = []
+
+    def __init__(
+        self,
+        *,
+        role_path: Path,
+        api_key: str | None,
+        model: str,
+        gemini_api_key: str | None = None,
+        gemini_model: str = "",
+    ) -> None:
+        self.role_path = role_path
+        self.api_key = api_key
+        self.model = model
+        self.gemini_api_key = gemini_api_key
+        self.gemini_model = gemini_model
+
+    def normalize_source(self, source_id: str):
+        from app.services.resume_normalization_service import ResumeNormalizationResult
+
+        self.calls.append(source_id)
+        return ResumeNormalizationResult(
+            status="completed",
+            resume=NormalizedResume(sourceIds=[source_id], name="Walker Lin", skills=["Python"]),
+        )
+
+    def normalize_sources(self, source_ids: list[str]):
+        from app.services.resume_normalization_service import ResumeNormalizationResult
+
+        self.calls.append(tuple(source_ids))
+        return ResumeNormalizationResult(
+            status="completed",
+            resume=NormalizedResume(sourceIds=source_ids, name="Walker Lin", skills=["Python"]),
+        )
 
 
 class RoleRouteTest(unittest.TestCase):
@@ -53,8 +91,38 @@ class RoleRouteTest(unittest.TestCase):
 
             self.assertEqual(response.status_code, 200)
             self.assertIn("尚未建立個人資訊", response.text)
-            self.assertIn("上傳履歷", response.text)
+            self.assertIn("開始初始化", response.text)
+            self.assertIn('name="source_url"', response.text)
+            self.assertNotIn("Evidence 來源", response.text)
             self.assertNotIn("姓名</span>", response.text)
+
+    def test_initialize_role_saves_sources_and_normalizes_together(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            workspace = Path(tmpdir) / "workspace"
+            RoleService(workspace).create_role("Walker")
+            FakeResumeNormalizationService.calls = []
+
+            with patch(
+                "app.routes.roles.ResumeNormalizationService",
+                FakeResumeNormalizationService,
+            ):
+                response = self._client_for(workspace).post(
+                    "/roles/walker/initialize",
+                    data={
+                        "source_url": [
+                            "https://www.linkedin.com/in/walker",
+                            "https://www.cake.me/walker",
+                        ]
+                    },
+                    files={"resume_file": ("resume.txt", b"Senior Python Engineer", "text/plain")},
+                )
+
+            self.assertEqual(response.status_code, 200)
+            sources = EvidenceRepository(workspace / "walker").list_sources().sources
+            self.assertEqual(len(sources), 3)
+            self.assertEqual(FakeResumeNormalizationService.calls, [tuple(source.id for source in sources)])
+            self.assertIn("已整合 3 筆來源並完成初始化。", response.text)
+            self.assertEqual(RoleService(workspace).load_profile("walker").name, "Walker Lin")
 
     def test_update_profile_writes_to_role_evidence(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -90,8 +158,123 @@ class RoleRouteTest(unittest.TestCase):
             self.assertIn("個人概要", response.text)
             self.assertIn("material-symbols-outlined edit-icon", response.text)
             self.assertIn("Walker Lin", response.text)
+            self.assertNotIn('href="/roles/walker/import">上傳履歷', response.text)
             self.assertNotIn("手動編輯個人資訊", response.text)
             self.assertNotIn("AI 匹配強度分析", response.text)
+
+    def test_role_detail_shows_evidence_management_actions(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            workspace = Path(tmpdir) / "workspace"
+            role_service = RoleService(workspace)
+            role_service.create_role("Walker")
+            role_service.save_profile("walker", RoleProfile(name="Walker Lin"))
+            role_path = workspace / "walker"
+            EvidenceRepository(role_path).add_source(
+                EvidenceSource(
+                    id="src_1",
+                    label="resume.txt",
+                    path="evidence/files/src_1_resume.txt",
+                    originalFilename="resume.txt",
+                    contentType="text/plain",
+                    sizeBytes=12,
+                    contentHash="hash1",
+                    extractionStatus="completed",
+                    createdAt=datetime(2026, 7, 1, tzinfo=timezone.utc),
+                )
+            )
+            EvidenceRepository(role_path).add_source(
+                EvidenceSource(
+                    id="src_empty_url",
+                    type="url",
+                    label="Yourator",
+                    path="evidence/files/src_empty_url.txt",
+                    originalFilename="src_empty_url.txt",
+                    contentType="text/plain",
+                    sizeBytes=0,
+                    contentHash="hash2",
+                    extractionStatus="not_required",
+                    createdAt=datetime(2026, 7, 1, tzinfo=timezone.utc),
+                )
+            )
+
+            response = self._client_for(workspace).get("/roles/walker")
+
+            self.assertEqual(response.status_code, 200)
+            self.assertIn("Multi-source registry", response.text)
+            self.assertIn("panel-editor evidence-source-editor", response.text)
+            self.assertIn('<summary class="material-symbols-outlined edit-icon">edit</summary>', response.text)
+            self.assertIn("evidence-source-edit-form", response.text)
+            self.assertIn('action="/roles/walker/sources"', response.text)
+            self.assertIn('name="source_url"', response.text)
+            self.assertIn('action="/roles/walker/sources/normalize"', response.text)
+            self.assertIn("解析資料", response.text)
+            self.assertIn("resume.txt", response.text)
+            self.assertNotIn("src_empty_url", response.text)
+            self.assertNotIn("詳細資料", response.text)
+            self.assertNotIn('href="/roles/walker/import"', response.text)
+
+    def test_update_role_sources_saves_url_sources_without_normalizing(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            workspace = Path(tmpdir) / "workspace"
+            role_service = RoleService(workspace)
+            role_service.create_role("Walker")
+            role_service.save_profile("walker", RoleProfile(name="Walker Lin"))
+
+            response = self._client_for(workspace).post(
+                "/roles/walker/sources",
+                data={
+                    "source_url": [
+                        "https://www.linkedin.com/in/walker",
+                        "",
+                        "https://www.yourator.co/users/walker",
+                    ]
+                },
+            )
+
+            self.assertEqual(response.status_code, 200)
+            sources = EvidenceRepository(workspace / "walker").list_sources().sources
+            self.assertEqual(len(sources), 2)
+            self.assertEqual([source.type for source in sources], ["url", "url"])
+            self.assertEqual(sources[0].label, "LinkedIn")
+            self.assertEqual(sources[0].source_url, "https://www.linkedin.com/in/walker")
+            self.assertIn("已更新 2 筆來源。", response.text)
+            self.assertIn("<h3>LinkedIn</h3>", response.text)
+            self.assertIn('href="https://www.linkedin.com/in/walker"', response.text)
+            self.assertIn('target="_blank"', response.text)
+            self.assertNotIn("www.linkedin.com-in-walker.txt", response.text)
+
+    def test_normalize_all_sources_processes_multiple_evidence_sources(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            workspace = Path(tmpdir) / "workspace"
+            RoleService(workspace).create_role("Walker")
+            role_path = workspace / "walker"
+            repository = EvidenceRepository(role_path)
+            for source_id in ("src_1", "src_2"):
+                repository.add_source(
+                    EvidenceSource(
+                        id=source_id,
+                        label=f"{source_id}.txt",
+                        path=f"evidence/files/{source_id}.txt",
+                        originalFilename=f"{source_id}.txt",
+                        contentType="text/plain",
+                        sizeBytes=12,
+                        contentHash=source_id,
+                        extractionStatus="completed",
+                        createdAt=datetime(2026, 7, 1, tzinfo=timezone.utc),
+                    )
+                )
+            FakeResumeNormalizationService.calls = []
+
+            with patch(
+                "app.routes.roles.ResumeNormalizationService",
+                FakeResumeNormalizationService,
+            ):
+                response = self._client_for(workspace).post("/roles/walker/sources/normalize")
+
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(FakeResumeNormalizationService.calls, [("src_1", "src_2")])
+            self.assertIn("已整合 2 筆 Evidence 來源。", response.text)
+            self.assertEqual(RoleService(workspace).load_profile("walker").name, "Walker Lin")
 
     def test_update_resume_profile_writes_resume_json(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:

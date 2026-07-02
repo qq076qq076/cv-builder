@@ -6,6 +6,7 @@ import uuid
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
+from urllib.parse import urlparse
 
 from app.schemas.evidence import EvidenceSource
 from app.storage.evidence import EvidenceRepository
@@ -64,6 +65,44 @@ class ImportService:
 
         return SavedUpload(source=source, saved_path=saved_path)
 
+    def save_url_source(self, *, url: str) -> SavedUpload:
+        ensure_workspace_dirs(self.workspace_path)
+
+        normalized_url = url.strip()
+        content = f"Source URL: {normalized_url}\n".encode("utf-8")
+        content_hash = sha256(content).hexdigest()
+        existing_source = self._find_existing_source(content_hash)
+        if existing_source is not None:
+            return SavedUpload(
+                source=existing_source,
+                saved_path=self.workspace_path / existing_source.path,
+                is_duplicate=True,
+            )
+
+        source_id = f"src_{uuid.uuid4().hex}"
+        filename = _safe_url_filename(normalized_url)
+        relative_path = Path("evidence/files") / f"{source_id}_{filename}"
+        saved_path = self.workspace_path / relative_path
+        saved_path.parent.mkdir(parents=True, exist_ok=True)
+        saved_path.write_bytes(content)
+
+        source = EvidenceSource(
+            id=source_id,
+            type="url",
+            label=_url_source_label(normalized_url),
+            path=relative_path.as_posix(),
+            originalFilename=filename,
+            contentType="text/plain",
+            sourceUrl=normalized_url,
+            sizeBytes=len(content),
+            contentHash=content_hash,
+            extractionStatus="not_required",
+            createdAt=datetime.now(timezone.utc),
+        )
+        self.evidence_repository.add_source(source)
+
+        return SavedUpload(source=source, saved_path=saved_path)
+
     def reprocess_source(self, source_id: str) -> SavedUpload | None:
         ensure_workspace_dirs(self.workspace_path)
 
@@ -113,6 +152,26 @@ def _safe_filename(filename: str) -> str:
     normalized = re.sub(r"[^A-Za-z0-9._-]+", "-", path_name)
     normalized = normalized.strip(".-")
     return normalized or "upload"
+
+
+def _safe_url_filename(url: str) -> str:
+    parsed = urlparse(url)
+    host = parsed.netloc or "url"
+    path = parsed.path.strip("/") or "source"
+    return _safe_filename(f"{host}-{path}.txt")
+
+
+def _url_source_label(url: str) -> str:
+    host = urlparse(url).netloc.lower()
+    if "linkedin.com" in host:
+        return "LinkedIn"
+    if "104.com.tw" in host:
+        return "104 銀行"
+    if "cake.me" in host or "cakeresume.com" in host:
+        return "CakeResume"
+    if "yourator.co" in host:
+        return "Yourator"
+    return host.removeprefix("www.") or "URL 來源"
 
 
 def _hash_file(path: Path) -> str | None:
