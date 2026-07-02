@@ -264,6 +264,14 @@ code {
   transform: scale(0.98);
 }
 
+.app-button:disabled,
+.button:disabled {
+  cursor: wait;
+  filter: saturate(0.72) brightness(0.88);
+  opacity: 0.82;
+  transform: none;
+}
+
 .app-button-primary,
 .button {
   border: 0;
@@ -285,6 +293,39 @@ code {
   color: var(--color-text-strong);
   background: rgba(0, 219, 231, 0.06);
   box-shadow: none;
+}
+
+.loading-button {
+  position: relative;
+}
+
+.loading-button .button-label,
+.loading-button .button-loading {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+}
+
+.loading-button .button-loading {
+  display: none;
+}
+
+.is-submitting .loading-button .button-label {
+  display: none;
+}
+
+.is-submitting .loading-button .button-loading {
+  display: inline-flex;
+}
+
+.button-spinner {
+  width: 16px;
+  height: 16px;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 999px;
+  animation: button-spin 740ms linear infinite;
 }
 
 .app-actions,
@@ -409,6 +450,12 @@ textarea {
   100% {
     top: 100%;
     opacity: 0;
+  }
+}
+
+@keyframes button-spin {
+  to {
+    transform: rotate(360deg);
   }
 }
 

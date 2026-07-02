@@ -47,7 +47,7 @@
           </div>
         </div>
         <div class="initialize-console">
-          <form class="initialize-upload-card" method="post" action="/roles/{{ role.id }}/initialize" enctype="multipart/form-data">
+          <form class="initialize-upload-card" method="post" action="/roles/{{ role.id }}/initialize" enctype="multipart/form-data" data-loading-form>
             <div class="scan-line" aria-hidden="true"></div>
             <div class="initialize-upload-panel">
               <span class="material-symbols-outlined upload-panel-icon">upload_file</span>
@@ -88,7 +88,13 @@
               <small>workspace/{{ role.id }}/evidence</small>
             </div>
             <div class="initialize-submit-row">
-              <button class="app-button app-button-primary" type="submit">開始初始化</button>
+              <button class="app-button app-button-primary loading-button" type="submit" data-loading-label="初始化中">
+                <span class="button-label">開始初始化</span>
+                <span class="button-loading" aria-hidden="true">
+                  <span class="button-spinner"></span>
+                  初始化中
+                </span>
+              </button>
             </div>
           </form>
 
@@ -691,10 +697,16 @@
           </span>
         </span>
         <div class="evidence-actions">
-          <form class="evidence-normalize-form" method="post" action="/roles/{{ role.id }}/sources/normalize">
-            <button class="app-button app-button-accent" type="submit" {% if not sources %}disabled{% endif %}>
-              <span class="material-symbols-outlined">auto_fix_high</span>
-              解析資料
+          <form class="evidence-normalize-form" method="post" action="/roles/{{ role.id }}/sources/normalize" data-loading-form>
+            <button class="app-button app-button-accent loading-button" type="submit" data-loading-label="解析中" {% if not sources %}disabled{% endif %}>
+              <span class="button-label">
+                <span class="material-symbols-outlined">auto_fix_high</span>
+                解析資料
+              </span>
+              <span class="button-loading" aria-hidden="true">
+                <span class="button-spinner"></span>
+                解析中
+              </span>
             </button>
           </form>
         </div>
@@ -872,6 +884,21 @@
         const list = form.querySelector(`[data-repeatable-list="${key}"]`);
         if (!template || !list) return;
         list.append(template.content.firstElementChild.cloneNode(true));
+      });
+    });
+
+    document.querySelectorAll("[data-loading-form]").forEach((form) => {
+      form.addEventListener("submit", () => {
+        form.classList.add("is-submitting");
+        form.querySelectorAll('button[type="submit"]').forEach((button) => {
+          if (button.disabled) return;
+          button.disabled = true;
+          button.setAttribute("aria-busy", "true");
+          const loadingLabel = button.dataset.loadingLabel;
+          if (loadingLabel) {
+            button.setAttribute("aria-label", loadingLabel);
+          }
+        });
       });
     });
   </script>
