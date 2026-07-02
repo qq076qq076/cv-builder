@@ -116,10 +116,15 @@ def update_resume_profile(
 
 
 @router.post("/roles/{role_id}/resume/skills")
-def update_resume_skills(role_id: str, skills: str = Form("")) -> RedirectResponse:
+def update_resume_skills(
+    role_id: str,
+    skills: str = Form(""),
+    skill_items: list[str] = Form(default=[]),
+) -> RedirectResponse:
     repository = _resume_repository_for_role(role_id)
     resume = repository.load()
-    repository.save(resume.model_copy(update={"skills": _split_lines(skills)}))
+    parsed_skills = _clean_list(skill_items) if skill_items else _split_lines(skills)
+    repository.save(resume.model_copy(update={"skills": parsed_skills}))
     return RedirectResponse(f"/roles/{role_id}#skills", status_code=status.HTTP_303_SEE_OTHER)
 
 
@@ -149,11 +154,32 @@ def update_resume_contact(
 
 
 @router.post("/roles/{role_id}/resume/experiences")
-def update_resume_experiences(role_id: str, experiences: str = Form("")) -> RedirectResponse:
+def update_resume_experiences(
+    role_id: str,
+    experiences: str = Form(""),
+    experience_title: list[str] = Form(default=[]),
+    experience_company: list[str] = Form(default=[]),
+    experience_period: list[str] = Form(default=[]),
+    experience_summary: list[str] = Form(default=[]),
+    experience_achievements: list[str] = Form(default=[]),
+    experience_technologies: list[str] = Form(default=[]),
+) -> RedirectResponse:
     repository = _resume_repository_for_role(role_id)
     resume = repository.load()
+    parsed_experiences = (
+        _parse_experience_items(
+            titles=experience_title,
+            companies=experience_company,
+            periods=experience_period,
+            summaries=experience_summary,
+            achievements=experience_achievements,
+            technologies=experience_technologies,
+        )
+        if experience_title
+        else _parse_experience_blocks(experiences)
+    )
     repository.save(
-        resume.model_copy(update={"experiences": _parse_experience_blocks(experiences)})
+        resume.model_copy(update={"experiences": parsed_experiences})
     )
     return RedirectResponse(f"/roles/{role_id}#experiences", status_code=status.HTTP_303_SEE_OTHER)
 
@@ -163,14 +189,40 @@ def update_resume_education(
     role_id: str,
     education: str = Form(""),
     certificates: str = Form(""),
+    education_school: list[str] = Form(default=[]),
+    education_degree: list[str] = Form(default=[]),
+    education_major: list[str] = Form(default=[]),
+    education_period: list[str] = Form(default=[]),
+    certificate_name: list[str] = Form(default=[]),
+    certificate_issuer: list[str] = Form(default=[]),
+    certificate_date: list[str] = Form(default=[]),
 ) -> RedirectResponse:
     repository = _resume_repository_for_role(role_id)
     resume = repository.load()
+    parsed_education = (
+        _parse_education_items(
+            schools=education_school,
+            degrees=education_degree,
+            majors=education_major,
+            periods=education_period,
+        )
+        if education_school
+        else _parse_education_lines(education)
+    )
+    parsed_certificates = (
+        _parse_certificate_items(
+            names=certificate_name,
+            issuers=certificate_issuer,
+            dates=certificate_date,
+        )
+        if certificate_name
+        else _parse_certificate_lines(certificates)
+    )
     repository.save(
         resume.model_copy(
             update={
-                "education": _parse_education_lines(education),
-                "certificates": _parse_certificate_lines(certificates),
+                "education": parsed_education,
+                "certificates": parsed_certificates,
             }
         )
     )
@@ -178,18 +230,47 @@ def update_resume_education(
 
 
 @router.post("/roles/{role_id}/resume/projects")
-def update_resume_projects(role_id: str, projects: str = Form("")) -> RedirectResponse:
+def update_resume_projects(
+    role_id: str,
+    projects: str = Form(""),
+    project_name: list[str] = Form(default=[]),
+    project_role: list[str] = Form(default=[]),
+    project_description: list[str] = Form(default=[]),
+    project_technologies: list[str] = Form(default=[]),
+    project_outcomes: list[str] = Form(default=[]),
+) -> RedirectResponse:
     repository = _resume_repository_for_role(role_id)
     resume = repository.load()
-    repository.save(resume.model_copy(update={"projects": _parse_project_blocks(projects)}))
+    parsed_projects = (
+        _parse_project_items(
+            names=project_name,
+            roles=project_role,
+            descriptions=project_description,
+            technologies=project_technologies,
+            outcomes=project_outcomes,
+        )
+        if project_name
+        else _parse_project_blocks(projects)
+    )
+    repository.save(resume.model_copy(update={"projects": parsed_projects}))
     return RedirectResponse(f"/roles/{role_id}#projects", status_code=status.HTTP_303_SEE_OTHER)
 
 
 @router.post("/roles/{role_id}/resume/languages")
-def update_resume_languages(role_id: str, languages: str = Form("")) -> RedirectResponse:
+def update_resume_languages(
+    role_id: str,
+    languages: str = Form(""),
+    language_name: list[str] = Form(default=[]),
+    language_proficiency: list[str] = Form(default=[]),
+) -> RedirectResponse:
     repository = _resume_repository_for_role(role_id)
     resume = repository.load()
-    repository.save(resume.model_copy(update={"languages": _parse_language_lines(languages)}))
+    parsed_languages = (
+        _parse_language_items(language_name, language_proficiency)
+        if language_name
+        else _parse_language_lines(languages)
+    )
+    repository.save(resume.model_copy(update={"languages": parsed_languages}))
     return RedirectResponse(f"/roles/{role_id}#languages", status_code=status.HTTP_303_SEE_OTHER)
 
 
@@ -293,6 +374,14 @@ def _split_lines(value: str) -> list[str]:
     return [line.strip() for line in value.replace(",", "\n").splitlines() if line.strip()]
 
 
+def _clean_list(values: list[str]) -> list[str]:
+    return [value.strip() for value in values if value.strip()]
+
+
+def _parallel_value(values: list[str], index: int) -> str:
+    return values[index].strip() if index < len(values) else ""
+
+
 def _split_blocks(value: str) -> list[str]:
     normalized = value.replace("\r\n", "\n").strip()
     if not normalized:
@@ -345,6 +434,33 @@ def _parse_experience_blocks(value: str) -> list[ResumeExperience]:
     return experiences
 
 
+def _parse_experience_items(
+    titles: list[str],
+    companies: list[str],
+    periods: list[str],
+    summaries: list[str],
+    achievements: list[str],
+    technologies: list[str],
+) -> list[ResumeExperience]:
+    experiences = []
+    for index, title in enumerate(titles):
+        if not title.strip():
+            continue
+        start_date, end_date = _parse_period(_parallel_value(periods, index))
+        experiences.append(
+            ResumeExperience(
+                title=title.strip(),
+                company=_parallel_value(companies, index),
+                startDate=start_date,
+                endDate=end_date,
+                summary=_parallel_value(summaries, index),
+                achievements=_parse_csv(_parallel_value(achievements, index)),
+                technologies=_parse_csv(_parallel_value(technologies, index)),
+            )
+        )
+    return experiences
+
+
 def _parse_project_blocks(value: str) -> list[ResumeProject]:
     projects = []
     for block in _split_blocks(value):
@@ -356,6 +472,29 @@ def _parse_project_blocks(value: str) -> list[ResumeProject]:
                 description=data.get("description", ""),
                 technologies=_parse_csv(data.get("technologies", "")),
                 outcomes=_parse_csv(data.get("outcomes", "")),
+            )
+        )
+    return projects
+
+
+def _parse_project_items(
+    names: list[str],
+    roles: list[str],
+    descriptions: list[str],
+    technologies: list[str],
+    outcomes: list[str],
+) -> list[ResumeProject]:
+    projects = []
+    for index, name in enumerate(names):
+        if not name.strip():
+            continue
+        projects.append(
+            ResumeProject(
+                name=name.strip(),
+                role=_parallel_value(roles, index),
+                description=_parallel_value(descriptions, index),
+                technologies=_parse_csv(_parallel_value(technologies, index)),
+                outcomes=_parse_csv(_parallel_value(outcomes, index)),
             )
         )
     return projects
@@ -377,6 +516,29 @@ def _parse_education_lines(value: str) -> list[ResumeEducation]:
     return education
 
 
+def _parse_education_items(
+    schools: list[str],
+    degrees: list[str],
+    majors: list[str],
+    periods: list[str],
+) -> list[ResumeEducation]:
+    education = []
+    for index, school in enumerate(schools):
+        if not school.strip():
+            continue
+        start_date, end_date = _parse_period(_parallel_value(periods, index))
+        education.append(
+            ResumeEducation(
+                school=school.strip(),
+                degree=_parallel_value(degrees, index),
+                major=_parallel_value(majors, index),
+                startDate=start_date,
+                endDate=end_date,
+            )
+        )
+    return education
+
+
 def _parse_certificate_lines(value: str) -> list[ResumeCertificate]:
     certificates = []
     for line in _split_lines(value):
@@ -391,6 +553,25 @@ def _parse_certificate_lines(value: str) -> list[ResumeCertificate]:
     return certificates
 
 
+def _parse_certificate_items(
+    names: list[str],
+    issuers: list[str],
+    dates: list[str],
+) -> list[ResumeCertificate]:
+    certificates = []
+    for index, name in enumerate(names):
+        if not name.strip():
+            continue
+        certificates.append(
+            ResumeCertificate(
+                name=name.strip(),
+                issuer=_parallel_value(issuers, index),
+                date=_parallel_value(dates, index),
+            )
+        )
+    return certificates
+
+
 def _parse_language_lines(value: str) -> list[ResumeLanguage]:
     languages = []
     for line in _split_lines(value):
@@ -399,6 +580,23 @@ def _parse_language_lines(value: str) -> list[ResumeLanguage]:
             ResumeLanguage(
                 name=parts[0] if len(parts) > 0 else "",
                 proficiency=parts[1] if len(parts) > 1 else "",
+            )
+        )
+    return languages
+
+
+def _parse_language_items(
+    names: list[str],
+    proficiencies: list[str],
+) -> list[ResumeLanguage]:
+    languages = []
+    for index, name in enumerate(names):
+        if not name.strip():
+            continue
+        languages.append(
+            ResumeLanguage(
+                name=name.strip(),
+                proficiency=_parallel_value(proficiencies, index),
             )
         )
     return languages

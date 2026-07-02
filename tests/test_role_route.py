@@ -201,6 +201,68 @@ class RoleRouteTest(unittest.TestCase):
             self.assertEqual(resume.education[0].school, "Chien Hsin University")
             self.assertEqual(resume.certificates[0].issuer, "AWS")
 
+    def test_update_resume_repeatable_fields_write_resume_json(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            workspace = Path(tmpdir) / "workspace"
+            RoleService(workspace).create_role("Walker")
+            client = self._client_for(workspace)
+
+            client.post(
+                "/roles/walker/resume/skills",
+                data={"skill_items": ["Angular", "Docker"]},
+            )
+            client.post(
+                "/roles/walker/resume/experiences",
+                data={
+                    "experience_title": ["Senior Frontend Engineer"],
+                    "experience_company": ["Kabob"],
+                    "experience_period": ["Sep. 2022 - Present"],
+                    "experience_summary": ["Built SaaS products"],
+                    "experience_achievements": ["Led team, Improved CI"],
+                    "experience_technologies": ["Angular, Docker"],
+                },
+            )
+            client.post(
+                "/roles/walker/resume/projects",
+                data={
+                    "project_name": ["WEBA"],
+                    "project_role": ["Frontend"],
+                    "project_description": ["Customer communication platform"],
+                    "project_technologies": ["Vue, TypeScript"],
+                    "project_outcomes": ["Launched product"],
+                },
+            )
+            client.post(
+                "/roles/walker/resume/education",
+                data={
+                    "education_school": ["Chien Hsin University"],
+                    "education_degree": ["Bachelor"],
+                    "education_major": ["CSIE"],
+                    "education_period": ["2011 - 2015"],
+                    "certificate_name": ["AWS SAA"],
+                    "certificate_issuer": ["AWS"],
+                    "certificate_date": ["2023"],
+                },
+            )
+            response = client.post(
+                "/roles/walker/resume/languages",
+                data={
+                    "language_name": ["Mandarin"],
+                    "language_proficiency": ["Native"],
+                },
+                follow_redirects=False,
+            )
+
+            self.assertEqual(response.status_code, 303)
+            resume = ResumeRepository(workspace / "walker").load()
+            self.assertEqual(resume.skills, ["Angular", "Docker"])
+            self.assertEqual(resume.experiences[0].company, "Kabob")
+            self.assertEqual(resume.experiences[0].technologies, ["Angular", "Docker"])
+            self.assertEqual(resume.projects[0].name, "WEBA")
+            self.assertEqual(resume.education[0].start_date, "2011")
+            self.assertEqual(resume.certificates[0].name, "AWS SAA")
+            self.assertEqual(resume.languages[0].proficiency, "Native")
+
     def test_create_job_route_writes_role_job(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             workspace = Path(tmpdir) / "workspace"
