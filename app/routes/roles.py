@@ -1,9 +1,16 @@
 from __future__ import annotations
 
+from urllib.parse import quote
+
 from fastapi import APIRouter, Form, Request, status
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
+from app.ai.cover_letter_generator import (
+    CoverLetterGenerator,
+    GeminiCoverLetterGenerator,
+    OpenAICoverLetterGenerator,
+)
 from app.config import get_settings
 from app.schemas.role import RoleProfile
 from app.schemas.resume import (
@@ -36,6 +43,7 @@ def role_detail(
     request: Request,
     role_id: str,
     generated_output: str | None = None,
+    generated_error: str | None = None,
 ) -> HTMLResponse:
     settings = get_settings()
     role_service = RoleService(settings.workspace_path)
@@ -68,6 +76,7 @@ def role_detail(
             "jobs": job_service.list_jobs(),
             "job_outputs": job_service.list_outputs_by_job(),
             "generated_output": generated_output,
+            "generated_error": generated_error,
             "active_generated_output": active_generated_output,
             "normalization_result": None,
             "edit": _resume_edit_context(resume),
@@ -300,11 +309,22 @@ def generate_role_job_output(
     role = role_service.get_role(role_id)
     if role is not None:
         role_path = role_service.role_path(role_id)
-        generated_output = JobService(role_path).generate_output(
-            job_id=job_id,
-            kind=kind,
-            resume=ResumeRepository(role_path).load(),
-        )
+        try:
+            generated_output = JobService(role_path).generate_output(
+                job_id=job_id,
+                kind=kind,
+                resume=ResumeRepository(role_path).load(),
+                cover_letter_generator=_build_cover_letter_generator(
+                    role_path=role_path,
+                    settings=settings,
+                    kind=kind,
+                ),
+            )
+        except RuntimeError as exc:
+            return RedirectResponse(
+                f"/roles/{role_id}?generated_error={quote(str(exc))}#jobs",
+                status_code=status.HTTP_303_SEE_OTHER,
+            )
         if generated_output is not None:
             return RedirectResponse(
                 f"/roles/{role_id}?generated_output={generated_output.path}#jobs",
@@ -353,11 +373,35 @@ def normalize_source(request: Request, role_id: str, source_id: str) -> HTMLResp
             "jobs": job_service.list_jobs(),
             "job_outputs": job_service.list_outputs_by_job(),
             "generated_output": None,
+            "generated_error": None,
             "active_generated_output": None,
             "normalization_result": result,
             "edit": _resume_edit_context(resume),
         },
     )
+
+
+def _build_cover_letter_generator(
+    *,
+    role_path,
+    settings,
+    kind: str,
+) -> CoverLetterGenerator | None:
+    if kind != "cover_letter":
+        return None
+    if settings.openai_api_key:
+        return OpenAICoverLetterGenerator(
+            api_key=settings.openai_api_key,
+            model=settings.openai_model,
+            log_path=role_path / "logs/ai-cover-letter.jsonl",
+        )
+    if settings.gemini_api_key:
+        return GeminiCoverLetterGenerator(
+            api_key=settings.gemini_api_key,
+            model=settings.gemini_model,
+            log_path=role_path / "logs/ai-cover-letter.jsonl",
+        )
+    raise RuntimeError("缺少 OPENAI_API_KEY 或 GEMINI_API_KEY，無法生成推薦信")
 
 
 def _has_profile_content(profile: RoleProfile) -> bool:

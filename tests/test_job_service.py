@@ -6,6 +6,14 @@ from app.schemas.resume import NormalizedResume
 from app.services.job_service import JobService
 
 
+class FakeCoverLetterGenerator:
+    calls = []
+
+    def generate(self, *, resume: NormalizedResume, job) -> str:
+        self.calls.append((resume.name, job.url))
+        return f"我是 {resume.name}，想應徵 {job.url}。"
+
+
 class JobServiceTest(unittest.TestCase):
     def test_create_job_from_url_persists_job(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -51,18 +59,36 @@ class JobServiceTest(unittest.TestCase):
                     summary="Builds reliable web apps",
                     skills=["Angular", "Docker"],
                 ),
+                cover_letter_generator=FakeCoverLetterGenerator(),
             )
 
             self.assertIsNotNone(generated)
             self.assertEqual(generated.kind, "cover-letter")
-            self.assertIn("推薦信草稿", generated.content)
+            self.assertIn("Walker Lin", generated.content)
             output = service.get_output_by_path(generated.path)
             self.assertIsNotNone(output)
             self.assertIn("Walker Lin", output.content)
             self.assertEqual(
+                FakeCoverLetterGenerator.calls[-1],
+                ("Walker Lin", "https://jobs.example.com/frontend"),
+            )
+            self.assertEqual(
                 service.list_outputs_by_job()[job.id]["cover-letter"].path,
                 generated.path,
             )
+
+    def test_cover_letter_requires_ai_generator(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            role_path = Path(tmpdir) / "workspace/walker"
+            service = JobService(role_path)
+            job = service.create_job_from_url("https://jobs.example.com/frontend")
+
+            with self.assertRaises(RuntimeError):
+                service.generate_output(
+                    job_id=job.id,
+                    kind="cover_letter",
+                    resume=NormalizedResume(name="Walker Lin"),
+                )
 
 
 if __name__ == "__main__":

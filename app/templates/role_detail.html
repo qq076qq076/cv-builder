@@ -557,6 +557,11 @@
             已生成輸出檔：<code>{{ generated_output }}</code>
           </div>
         {% endif %}
+        {% if generated_error %}
+          <div class="app-notice app-notice-muted">
+            推薦信生成失敗：{{ generated_error }}
+          </div>
+        {% endif %}
         <form class="job-create-form" method="post" action="/roles/{{ role.id }}/jobs">
           <label>
             <span>新增職缺網址</span>

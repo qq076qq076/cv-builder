@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import urlparse
 
+from app.ai.cover_letter_generator import CoverLetterGenerator
 from app.schemas.job import TrackedJob
 from app.schemas.resume import NormalizedResume
 from app.storage.jobs import JobRepository
@@ -46,6 +47,7 @@ class JobService:
         job_id: str,
         kind: str,
         resume: NormalizedResume,
+        cover_letter_generator: CoverLetterGenerator | None = None,
     ) -> GeneratedJobOutput | None:
         job = self.repository.get_job(job_id)
         if job is None:
@@ -55,8 +57,14 @@ class JobService:
         relative_path = Path("outputs") / f"{job.id}-{safe_kind}.md"
         output_path = self.role_path / relative_path
         output_path.parent.mkdir(parents=True, exist_ok=True)
+        content = _build_generated_markdown(
+            job=job,
+            kind=kind,
+            resume=resume,
+            cover_letter_generator=cover_letter_generator,
+        )
         output_path.write_text(
-            content := _build_generated_markdown(job=job, kind=kind, resume=resume),
+            content,
             encoding="utf-8",
         )
         return GeneratedJobOutput(path=relative_path.as_posix(), kind=safe_kind, content=content)
@@ -120,11 +128,15 @@ def _build_generated_markdown(
     job: TrackedJob,
     kind: str,
     resume: NormalizedResume,
+    cover_letter_generator: CoverLetterGenerator | None = None,
 ) -> str:
     if kind == "resume":
         return _build_resume_markdown(job=job, resume=resume)
 
-    return _build_cover_letter_markdown(job=job, resume=resume)
+    if cover_letter_generator is None:
+        raise RuntimeError("缺少 OPENAI_API_KEY 或 GEMINI_API_KEY，無法生成推薦信")
+
+    return cover_letter_generator.generate(resume=resume, job=job)
 
 
 def _build_resume_markdown(*, job: TrackedJob, resume: NormalizedResume) -> str:
@@ -138,30 +150,4 @@ def _build_resume_markdown(*, job: TrackedJob, resume: NormalizedResume) -> str:
         f"- URL：{job.url}\n\n"
         f"## 候選人摘要\n\n{summary}\n\n"
         f"## 關鍵技能\n\n{skills}\n"
-    )
-
-
-def _build_cover_letter_markdown(*, job: TrackedJob, resume: NormalizedResume) -> str:
-    candidate_name = resume.name or "候選人"
-    candidate_title = resume.title or "求職者"
-    skills = ", ".join(resume.skills[:8]) if resume.skills else "相關技術能力"
-    summary = resume.summary or "具備跨職能協作、產品開發與問題解決能力。"
-    experience = resume.experiences[0] if resume.experiences else None
-    experience_line = ""
-    if experience is not None:
-        experience_line = (
-            f"過去在 {experience.company or '相關團隊'} 擔任 "
-            f"{experience.title or candidate_title}，{experience.summary or '累積了可落地的產品開發經驗'}。"
-        )
-
-    return (
-        "# 推薦信草稿\n\n"
-        f"親愛的 {job.company} 招募團隊您好：\n\n"
-        f"我誠摯推薦 {candidate_name} 應徵貴公司的「{job.title}」職缺。"
-        f"{candidate_name} 是一位 {candidate_title}，{summary}\n\n"
-        f"{experience_line}\n\n"
-        f"他具備 {skills} 等能力，能在需求釐清、系統實作、品質維護與團隊協作之間取得良好平衡。"
-        "我相信他能快速理解貴公司的產品情境，並為團隊帶來穩定且可持續的交付能力。\n\n"
-        "若需要更完整的背景資料，建議搭配履歷內容與實際作品進一步評估。謝謝您撥冗閱讀。\n\n"
-        "此致\n敬禮\n"
     )

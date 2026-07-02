@@ -16,6 +16,19 @@ from app.storage.evidence import EvidenceRepository
 from app.storage.resume import ResumeRepository
 
 
+class FakeCoverLetterGenerator:
+    calls = []
+
+    def __init__(self, *, api_key: str, model: str, log_path: Path | None = None) -> None:
+        self.api_key = api_key
+        self.model = model
+        self.log_path = log_path
+
+    def generate(self, *, resume, job) -> str:
+        self.calls.append((self.api_key, self.model, resume.name, job.url))
+        return f"我是 {resume.name}，針對 {job.url} 申請此職缺。"
+
+
 class RoleRouteTest(unittest.TestCase):
     def test_create_role_redirects_to_role_detail(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -324,7 +337,8 @@ class RoleRouteTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmpdir:
             workspace = Path(tmpdir) / "workspace"
             RoleService(workspace).create_role("Walker")
-            client = self._client_for(workspace)
+            FakeCoverLetterGenerator.calls = []
+            client = self._client_for(workspace, openai_api_key="openai-key")
             client.post(
                 "/roles/walker/resume/profile",
                 data={
@@ -340,23 +354,64 @@ class RoleRouteTest(unittest.TestCase):
             jobs_path = workspace / "walker/jobs/jobs.json"
             job_id = json.loads(jobs_path.read_text(encoding="utf-8"))["jobs"][0]["id"]
 
-            response = client.post(
-                f"/roles/walker/jobs/{job_id}/generate",
-                data={"kind": "cover_letter"},
-                follow_redirects=False,
-            )
+            with patch(
+                "app.routes.roles.OpenAICoverLetterGenerator",
+                FakeCoverLetterGenerator,
+            ):
+                response = client.post(
+                    f"/roles/walker/jobs/{job_id}/generate",
+                    data={"kind": "cover_letter"},
+                    follow_redirects=False,
+                )
 
             self.assertEqual(response.status_code, 303)
             self.assertEqual(
                 response.headers["location"],
                 f"/roles/walker?generated_output=outputs/{job_id}-cover-letter.md#jobs",
             )
+            self.assertEqual(
+                FakeCoverLetterGenerator.calls,
+                [
+                    (
+                        "openai-key",
+                        "gpt-4.1-mini",
+                        "Walker Lin",
+                        "https://jobs.example.com/senior-frontend",
+                    )
+                ],
+            )
             page = client.get(response.headers["location"])
             self.assertEqual(page.status_code, 200)
-            self.assertIn("推薦信草稿", page.text)
+            self.assertIn("針對 https://jobs.example.com/senior-frontend 申請此職缺", page.text)
             self.assertIn("Walker Lin", page.text)
             self.assertIn("查看推薦信", page.text)
             self.assertIn("重新生成推薦信", page.text)
+
+    def test_generate_cover_letter_without_api_key_shows_error(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            workspace = Path(tmpdir) / "workspace"
+            RoleService(workspace).create_role("Walker")
+            client = self._client_for(workspace, openai_api_key="")
+            client.post(
+                "/roles/walker/resume/profile",
+                data={"name": "Walker Lin", "summary": "Frontend engineer"},
+            )
+            client.post(
+                "/roles/walker/jobs",
+                data={"job_url": "https://jobs.example.com/senior-frontend"},
+            )
+            jobs_path = workspace / "walker/jobs/jobs.json"
+            job_id = json.loads(jobs_path.read_text(encoding="utf-8"))["jobs"][0]["id"]
+
+            response = client.post(
+                f"/roles/walker/jobs/{job_id}/generate",
+                data={"kind": "cover_letter"},
+                follow_redirects=True,
+            )
+
+            self.assertEqual(response.status_code, 200)
+            self.assertIn("推薦信生成失敗", response.text)
+            self.assertIn("缺少 OPENAI_API_KEY 或 GEMINI_API_KEY", response.text)
 
     def test_normalize_source_without_api_key_shows_message(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
