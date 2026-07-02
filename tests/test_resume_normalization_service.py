@@ -48,7 +48,23 @@ class FakeProviderParser:
 
     def parse(self, *, extracted_text: str, source_id: str) -> NormalizedResume:
         self.calls.append((self.api_key, self.model))
-        return NormalizedResume(sourceIds=[source_id], name=self.model)
+        return NormalizedResume(
+            sourceIds=[source_id],
+            name=self.model,
+            skills=["Python"],
+        )
+
+
+class SparseFileParser:
+    def parse_file(
+        self,
+        *,
+        filename: str,
+        content_type: str | None,
+        content: bytes,
+        source_id: str,
+    ) -> NormalizedResume:
+        return NormalizedResume(sourceIds=[source_id], title="Senior Frontend Engineer")
 
 
 class ResumeNormalizationServiceTest(unittest.TestCase):
@@ -68,6 +84,21 @@ class ResumeNormalizationServiceTest(unittest.TestCase):
             self.assertEqual(loaded.name, "Walker Lin")
             self.assertEqual(loaded.skills, ["Python", "FastAPI"])
             self.assertIn("resume.txt:text/plain", loaded.summary)
+
+    def test_sparse_ai_result_fails_without_writing_resume(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            role_path = self._role_with_source_file(Path(tmpdir))
+
+            result = ResumeNormalizationService(
+                role_path=role_path,
+                api_key=None,
+                model="test-model",
+                parser=SparseFileParser(),
+            ).normalize_source("src_1")
+
+            self.assertEqual(result.status, "failed")
+            self.assertIn("too sparse", result.message)
+            self.assertFalse((role_path / "evidence/resume.json").exists())
 
     def test_missing_api_key_returns_error_without_parser(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:

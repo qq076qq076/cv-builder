@@ -91,6 +91,14 @@ RESUME_EXTRACTION_CHECKLIST = """Extraction checklist:
 - Languages: extract human language proficiency such as Mandarin (Native), English (Intermediate).
 """
 
+RESUME_PARSE_OUTPUT_RULES = """Output rules:
+- Return every top-level JSON key shown in the schema, even when the value is empty.
+- Return every nested object key shown in the schema, even when the value is empty.
+- Use [] only after inspecting the whole document and confirming that section is absent.
+- Do not stop after finding the title. Continue through all pages and visible sections.
+- If a section exists in the resume, the matching JSON array must contain extracted items.
+"""
+
 
 class ResumeParser(Protocol):
     def parse(self, *, extracted_text: str, source_id: str) -> NormalizedResume:
@@ -203,7 +211,7 @@ class GeminiResumeParser:
             "response_format": {
                 "type": "text",
                 "mime_type": "application/json",
-                "schema": NormalizedResume.model_json_schema(by_alias=True),
+                "schema": _resume_response_schema(),
             },
         }
         _debug_log_ai_payload("Gemini input", payload, self.log_path)
@@ -338,6 +346,7 @@ def build_resume_parse_prompt(source_id: str, extracted_text: str) -> str:
         f"Source ID: {source_id}\n\n"
         f"{RESUME_JSON_TEMPLATE}\n"
         f"{RESUME_EXTRACTION_CHECKLIST}\n"
+        f"{RESUME_PARSE_OUTPUT_RULES}\n"
         "Normalize the following resume text into the requested JSON schema. "
         "Return only JSON, no markdown.\n\n"
         f"{extracted_text}"
@@ -349,6 +358,7 @@ def build_resume_file_prompt(source_id: str) -> str:
         f"Source ID: {source_id}\n\n"
         f"{RESUME_JSON_TEMPLATE}\n"
         f"{RESUME_EXTRACTION_CHECKLIST}\n"
+        f"{RESUME_PARSE_OUTPUT_RULES}\n"
         "Analyze the attached resume file directly. "
         "Use the visual document content and text in the file. "
         "Return only JSON, no markdown."
@@ -390,3 +400,32 @@ def _guess_content_type(filename: str) -> str:
     if filename.lower().endswith(".pdf"):
         return "application/pdf"
     return "text/plain"
+
+
+def _resume_response_schema() -> dict:
+    schema = NormalizedResume.model_json_schema(by_alias=True)
+    _require_object_properties(schema)
+    return schema
+
+
+def _require_object_properties(schema_node: object) -> None:
+    if isinstance(schema_node, list):
+        for item in schema_node:
+            _require_object_properties(item)
+        return
+
+    if not isinstance(schema_node, dict):
+        return
+
+    properties = schema_node.get("properties")
+    if isinstance(properties, dict):
+        schema_node["required"] = list(properties.keys())
+        for property_schema in properties.values():
+            _require_object_properties(property_schema)
+
+    for key in ("$defs", "items", "anyOf", "oneOf", "allOf"):
+        _require_object_properties(schema_node.get(key))
+
+    if not isinstance(properties, dict):
+        for value in schema_node.values():
+            _require_object_properties(value)

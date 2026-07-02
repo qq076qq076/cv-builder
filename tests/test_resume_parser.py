@@ -8,6 +8,7 @@ from pathlib import Path
 from app.ai.resume_parser import (
     _debug_log_ai_payload,
     _extract_gemini_response_json,
+    _resume_response_schema,
     build_resume_parse_prompt,
 )
 
@@ -57,7 +58,18 @@ class GeminiResponseParserTest(unittest.TestCase):
         self.assertIn("Skills: include every listed skill", prompt)
         self.assertIn("Experience: create one item per job", prompt)
         self.assertIn("Projects: create one item per project", prompt)
+        self.assertIn("Return every top-level JSON key", prompt)
         self.assertIn("Walker Lin", prompt)
+
+    def test_resume_response_schema_requires_all_resume_sections(self) -> None:
+        schema = _resume_response_schema()
+
+        self.assertIn("name", schema["required"])
+        self.assertIn("skills", schema["required"])
+        self.assertIn("experiences", schema["required"])
+        self.assertIn("projects", schema["required"])
+        self.assertIn("languages", schema["required"])
+        self.assertIn("email", schema["$defs"]["ResumeContact"]["required"])
 
     def test_debug_logger_writes_jsonl_file(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:

@@ -60,6 +60,7 @@ class ResumeNormalizationService:
                 content=content,
                 source_id=source.id,
             )
+            _validate_resume_detail(resume)
         except Exception as exc:
             return ResumeNormalizationResult(
                 status="failed",
@@ -105,3 +106,32 @@ def _parse_source_file(
         extracted_text=content.decode("utf-8", errors="ignore"),
         source_id=source_id,
     )
+
+
+def _validate_resume_detail(resume: NormalizedResume) -> None:
+    has_identity = bool(resume.name.strip() or resume.title.strip())
+    has_contact = bool(
+        resume.contact.email.strip()
+        or resume.contact.phone.strip()
+        or resume.contact.location.strip()
+        or resume.contact.links
+    )
+    has_detail = any(
+        [
+            resume.summary.strip(),
+            resume.autobiography.strip(),
+            has_contact,
+            resume.skills,
+            resume.experiences,
+            resume.projects,
+            resume.education,
+            resume.certificates,
+            resume.languages,
+        ]
+    )
+
+    if not has_identity or not has_detail:
+        raise ValueError(
+            "AI result is too sparse; expected identity plus skills, experience, "
+            "projects, education, contact, summary, certificates, or languages"
+        )
