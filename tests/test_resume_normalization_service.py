@@ -22,14 +22,18 @@ class FakeParser:
 
 
 class FakeFileParser:
+    extracted_text: str | None = None
+
     def parse_file(
         self,
         *,
         filename: str,
         content_type: str | None,
         content: bytes,
+        extracted_text: str | None = None,
         source_id: str,
     ) -> NormalizedResume:
+        self.extracted_text = extracted_text
         return NormalizedResume(
             sourceIds=[source_id],
             name="Walker Lin",
@@ -62,6 +66,7 @@ class SparseFileParser:
         filename: str,
         content_type: str | None,
         content: bytes,
+        extracted_text: str | None = None,
         source_id: str,
     ) -> NormalizedResume:
         return NormalizedResume(sourceIds=[source_id], title="Senior Frontend Engineer")
@@ -71,12 +76,13 @@ class ResumeNormalizationServiceTest(unittest.TestCase):
     def test_normalize_source_saves_resume_json(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             role_path = self._role_with_source_file(Path(tmpdir))
+            parser = FakeFileParser()
 
             result = ResumeNormalizationService(
                 role_path=role_path,
                 api_key=None,
                 model="test-model",
-                parser=FakeFileParser(),
+                parser=parser,
             ).normalize_source("src_1")
 
             self.assertEqual(result.status, "completed")
@@ -84,6 +90,7 @@ class ResumeNormalizationServiceTest(unittest.TestCase):
             self.assertEqual(loaded.name, "Walker Lin")
             self.assertEqual(loaded.skills, ["Python", "FastAPI"])
             self.assertIn("resume.txt:text/plain", loaded.summary)
+            self.assertEqual(parser.extracted_text, "Senior Python Engineer")
 
     def test_sparse_ai_result_fails_without_writing_resume(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:

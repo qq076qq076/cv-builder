@@ -4,6 +4,8 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from app.ai.resume_parser import GeminiResumeParser, OpenAIResumeParser, ResumeParser
+from app.importers.pdf import can_extract_pdf, extract_text_from_pdf_bytes
+from app.importers.text import can_extract_text, extract_text_from_bytes
 from app.schemas.resume import NormalizedResume
 from app.storage.evidence import EvidenceRepository
 from app.storage.resume import ResumeRepository
@@ -53,11 +55,17 @@ class ResumeNormalizationService:
         parser = self.parser or self._build_parser()
         try:
             content = source_path.read_bytes()
+            extracted_text = _extract_supplemental_text(
+                filename=source.original_filename,
+                content_type=source.content_type,
+                content=content,
+            )
             resume = _parse_source_file(
                 parser=parser,
                 filename=source.original_filename,
                 content_type=source.content_type,
                 content=content,
+                extracted_text=extracted_text,
                 source_id=source.id,
             )
             _validate_resume_detail(resume)
@@ -91,6 +99,7 @@ def _parse_source_file(
     filename: str,
     content_type: str | None,
     content: bytes,
+    extracted_text: str | None,
     source_id: str,
 ) -> NormalizedResume:
     parse_file = getattr(parser, "parse_file", None)
@@ -99,13 +108,31 @@ def _parse_source_file(
             filename=filename,
             content_type=content_type,
             content=content,
+            extracted_text=extracted_text,
             source_id=source_id,
         )
 
     return parser.parse(
-        extracted_text=content.decode("utf-8", errors="ignore"),
+        extracted_text=extracted_text or content.decode("utf-8", errors="ignore"),
         source_id=source_id,
     )
+
+
+def _extract_supplemental_text(
+    *,
+    filename: str,
+    content_type: str | None,
+    content: bytes,
+) -> str | None:
+    try:
+        if can_extract_text(filename):
+            return extract_text_from_bytes(content)
+        if can_extract_pdf(filename, content_type):
+            return extract_text_from_pdf_bytes(content)
+    except Exception:
+        return None
+
+    return None
 
 
 def _validate_resume_detail(resume: NormalizedResume) -> None:

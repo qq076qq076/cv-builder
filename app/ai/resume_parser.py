@@ -110,6 +110,7 @@ class ResumeParser(Protocol):
         filename: str,
         content_type: str | None,
         content: bytes,
+        extracted_text: str | None = None,
         source_id: str,
     ) -> NormalizedResume:
         pass
@@ -155,9 +156,10 @@ class OpenAIResumeParser:
         filename: str,
         content_type: str | None,
         content: bytes,
+        extracted_text: str | None = None,
         source_id: str,
     ) -> NormalizedResume:
-        prompt = build_resume_file_prompt(source_id)
+        prompt = build_resume_file_prompt(source_id, extracted_text)
         file_data = _file_data_url(content_type, content)
         messages = [
             {"role": "system", "content": RESUME_PARSE_SYSTEM_PROMPT},
@@ -226,9 +228,10 @@ class GeminiResumeParser:
         filename: str,
         content_type: str | None,
         content: bytes,
+        extracted_text: str | None = None,
         source_id: str,
     ) -> NormalizedResume:
-        prompt = build_resume_file_prompt(source_id)
+        prompt = build_resume_file_prompt(source_id, extracted_text)
         payload = {
             "model": self.model,
             "input": [
@@ -242,7 +245,7 @@ class GeminiResumeParser:
             "response_format": {
                 "type": "text",
                 "mime_type": "application/json",
-                "schema": NormalizedResume.model_json_schema(by_alias=True),
+                "schema": _resume_response_schema(),
             },
         }
         _debug_log_ai_payload("Gemini input", payload, self.log_path)
@@ -353,8 +356,8 @@ def build_resume_parse_prompt(source_id: str, extracted_text: str) -> str:
     )
 
 
-def build_resume_file_prompt(source_id: str) -> str:
-    return (
+def build_resume_file_prompt(source_id: str, extracted_text: str | None = None) -> str:
+    prompt = (
         f"Source ID: {source_id}\n\n"
         f"{RESUME_JSON_TEMPLATE}\n"
         f"{RESUME_EXTRACTION_CHECKLIST}\n"
@@ -362,6 +365,16 @@ def build_resume_file_prompt(source_id: str) -> str:
         "Analyze the attached resume file directly. "
         "Use the visual document content and text in the file. "
         "Return only JSON, no markdown."
+    )
+    normalized_text = (extracted_text or "").strip()
+    if not normalized_text:
+        return prompt
+
+    return (
+        f"{prompt}\n\n"
+        "Supplemental extracted text from the same uploaded file. "
+        "Use this text to recover sections if the document renderer misses content:\n\n"
+        f"{normalized_text}"
     )
 
 

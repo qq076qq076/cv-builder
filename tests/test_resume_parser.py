@@ -6,9 +6,11 @@ from io import StringIO
 from pathlib import Path
 
 from app.ai.resume_parser import (
+    GeminiResumeParser,
     _debug_log_ai_payload,
     _extract_gemini_response_json,
     _resume_response_schema,
+    build_resume_file_prompt,
     build_resume_parse_prompt,
 )
 
@@ -70,6 +72,36 @@ class GeminiResponseParserTest(unittest.TestCase):
         self.assertIn("projects", schema["required"])
         self.assertIn("languages", schema["required"])
         self.assertIn("email", schema["$defs"]["ResumeContact"]["required"])
+
+    def test_resume_file_prompt_includes_supplemental_text(self) -> None:
+        prompt = build_resume_file_prompt("src_1", "Walker Lin\nSKILLS\nAngular")
+
+        self.assertIn("Supplemental extracted text", prompt)
+        self.assertIn("Walker Lin", prompt)
+        self.assertIn("Angular", prompt)
+
+    def test_gemini_file_parser_uses_required_response_schema(self) -> None:
+        parser = GeminiResumeParser(api_key="test-key", model="test-model")
+        captured_payloads = []
+
+        def fake_post_interaction(payload: dict) -> str:
+            captured_payloads.append(payload)
+            return '{"sourceIds":["src_1"],"name":"Walker Lin","skills":["Angular"]}'
+
+        parser._post_interaction = fake_post_interaction
+
+        with redirect_stdout(StringIO()):
+            parser.parse_file(
+                filename="resume.pdf",
+                content_type="application/pdf",
+                content=b"%PDF",
+                extracted_text="Walker Lin\nSKILLS\nAngular",
+                source_id="src_1",
+            )
+
+        schema = captured_payloads[0]["response_format"]["schema"]
+        self.assertIn("skills", schema["required"])
+        self.assertIn("Supplemental extracted text", captured_payloads[0]["input"][1]["text"])
 
     def test_debug_logger_writes_jsonl_file(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:

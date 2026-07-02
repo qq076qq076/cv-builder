@@ -37,6 +37,7 @@ class FakeOpenAIResumeParser:
         filename: str,
         content_type: str | None,
         content: bytes,
+        extracted_text: str | None = None,
         source_id: str,
     ) -> NormalizedResume:
         return NormalizedResume(
