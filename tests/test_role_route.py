@@ -24,8 +24,8 @@ class FakeCoverLetterGenerator:
         self.model = model
         self.log_path = log_path
 
-    def generate(self, *, resume, job) -> str:
-        self.calls.append((self.api_key, self.model, resume.name, job.url))
+    def generate(self, *, resume, job, job_page_text: str = "") -> str:
+        self.calls.append((self.api_key, self.model, resume.name, job.url, job_page_text))
         return f"我是 {resume.name}，針對 {job.url} 申請此職缺。"
 
 
@@ -357,6 +357,9 @@ class RoleRouteTest(unittest.TestCase):
             with patch(
                 "app.routes.roles.OpenAICoverLetterGenerator",
                 FakeCoverLetterGenerator,
+            ), patch(
+                "app.services.job_service._fetch_job_page_text",
+                return_value="Senior frontend role for a jobs platform using Angular.",
             ):
                 response = client.post(
                     f"/roles/walker/jobs/{job_id}/generate",
@@ -377,6 +380,7 @@ class RoleRouteTest(unittest.TestCase):
                         "gpt-4.1-mini",
                         "Walker Lin",
                         "https://jobs.example.com/senior-frontend",
+                        "Senior frontend role for a jobs platform using Angular.",
                     )
                 ],
             )

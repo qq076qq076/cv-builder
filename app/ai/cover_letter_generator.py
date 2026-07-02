@@ -14,7 +14,13 @@ from app.schemas.resume import NormalizedResume
 
 
 class CoverLetterGenerator(Protocol):
-    def generate(self, *, resume: NormalizedResume, job: TrackedJob) -> str:
+    def generate(
+        self,
+        *,
+        resume: NormalizedResume,
+        job: TrackedJob,
+        job_page_text: str = "",
+    ) -> str:
         pass
 
 
@@ -24,10 +30,23 @@ class OpenAICoverLetterGenerator:
         self.model = model
         self.log_path = log_path
 
-    def generate(self, *, resume: NormalizedResume, job: TrackedJob) -> str:
+    def generate(
+        self,
+        *,
+        resume: NormalizedResume,
+        job: TrackedJob,
+        job_page_text: str = "",
+    ) -> str:
         messages = [
             {"role": "system", "content": COVER_LETTER_SYSTEM_PROMPT},
-            {"role": "user", "content": build_cover_letter_prompt(resume=resume, job=job)},
+            {
+                "role": "user",
+                "content": build_cover_letter_prompt(
+                    resume=resume,
+                    job=job,
+                    job_page_text=job_page_text,
+                ),
+            },
         ]
         _debug_log_ai_payload(
             "OpenAI cover letter input",
@@ -49,10 +68,20 @@ class GeminiCoverLetterGenerator:
         self.model = model
         self.log_path = log_path
 
-    def generate(self, *, resume: NormalizedResume, job: TrackedJob) -> str:
+    def generate(
+        self,
+        *,
+        resume: NormalizedResume,
+        job: TrackedJob,
+        job_page_text: str = "",
+    ) -> str:
         payload = {
             "model": self.model,
-            "input": build_cover_letter_prompt(resume=resume, job=job),
+            "input": build_cover_letter_prompt(
+                resume=resume,
+                job=job,
+                job_page_text=job_page_text,
+            ),
         }
         _debug_log_ai_payload("Gemini cover letter input", payload, self.log_path)
         body = json.dumps(payload).encode("utf-8")
@@ -86,23 +115,35 @@ Rules:
 - Write in Traditional Chinese.
 - Use first person.
 - Keep a professional, confident, non-exaggerated tone.
-- Keep the final answer within 300 Chinese characters.
-- Tailor the letter to the target job URL and job metadata.
+- Keep the final answer within 500 Chinese characters.
+- Tailor the letter to the target job description, company/product traits, and job metadata.
+- Explicitly connect 2-4 concrete resume facts to requirements or signals found in the job page.
+- If job page text is available, use it as the primary source for company traits, responsibilities, and requirements.
 - Use resume facts only. Do not invent employers, metrics, degrees, or achievements.
 - Return only the letter body. Do not use markdown headings.
 """
 
 
-def build_cover_letter_prompt(*, resume: NormalizedResume, job: TrackedJob) -> str:
+def build_cover_letter_prompt(
+    *,
+    resume: NormalizedResume,
+    job: TrackedJob,
+    job_page_text: str = "",
+) -> str:
     resume_payload = resume.model_dump(mode="json", by_alias=True)
     job_payload = job.model_dump(mode="json", by_alias=True)
+    normalized_job_page_text = job_page_text.strip()
     return (
         "請根據以下履歷內容與目標職缺資訊，產生一封自我推薦信。\n"
-        "需求：語氣專業、第一人稱、300字內、為該職缺量身打造、只使用履歷中的真實資訊。\n\n"
+        "需求：語氣專業、第一人稱、500字內、為該職缺量身打造、只使用履歷中的真實資訊。\n"
+        "請先判讀職缺描述與公司特色，再挑選履歷中最相關的經驗、技能、專案或產業背景。\n"
+        "推薦信必須具體呼應職缺內容，例如產品/產業、工作職責、技術棧、團隊需求、公司特色；避免寫成任何職缺都能套用的泛用文字。\n\n"
         "目標職缺資訊：\n"
         f"{json.dumps(job_payload, ensure_ascii=False, indent=2, default=str)}\n\n"
         "目標職缺網址：\n"
         f"{job.url}\n\n"
+        "職缺頁面擷取內容（若為空，代表系統無法讀取頁面，仍需根據 URL、公司與職缺標題盡量客製）：\n"
+        f"{normalized_job_page_text or '(未能擷取職缺頁面內容)'}\n\n"
         "履歷內容：\n"
         f"{json.dumps(resume_payload, ensure_ascii=False, indent=2, default=str)}"
     )
