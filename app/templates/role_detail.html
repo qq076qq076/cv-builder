@@ -57,12 +57,71 @@
     {% else %}
       <div class="role-layout">
         <div class="role-main-column">
-          <section class="app-panel role-timeline-panel">
-            <div class="scan-line" aria-hidden="true"></div>
-            <div class="app-panel-heading">
-              <h2>工作經歷</h2>
-              <span>Experience timeline</span>
+          <section class="app-panel editable-panel" id="profile">
+            <div class="app-panel-heading editable-heading">
+              <span class="panel-title-group">
+                <span class="material-symbols-outlined panel-icon">badge</span>
+                <span>
+                  <h2>個人概要</h2>
+                  <small>Profile summary</small>
+                </span>
+              </span>
+              <details class="panel-editor">
+                <summary class="material-symbols-outlined edit-icon">edit</summary>
+                <form class="app-form edit-form" method="post" action="/roles/{{ role.id }}/resume/profile">
+                  <label>
+                    <span>姓名</span>
+                    <input name="name" value="{{ resume.name or profile.name }}" placeholder="例如：王小明">
+                  </label>
+                  <label>
+                    <span>職稱</span>
+                    <input name="title" value="{{ resume.title }}" placeholder="例如：Senior Frontend Engineer">
+                  </label>
+                  <label>
+                    <span>摘要</span>
+                    <textarea name="summary" rows="5">{{ resume.summary }}</textarea>
+                  </label>
+                  <label>
+                    <span>自傳</span>
+                    <textarea name="autobiography" rows="5">{{ resume.autobiography }}</textarea>
+                  </label>
+                  <div class="app-actions">
+                    <button class="app-button app-button-primary" type="submit">儲存概要</button>
+                  </div>
+                </form>
+              </details>
             </div>
+            <div class="profile-summary-card">
+              <h3>{{ resume.name or profile.name or role.name }}</h3>
+              {% if resume.title %}<p class="profile-title">{{ resume.title }}</p>{% endif %}
+              {% if resume.summary %}<p>{{ resume.summary }}</p>{% endif %}
+              {% if resume.autobiography %}<p>{{ resume.autobiography }}</p>{% endif %}
+            </div>
+          </section>
+
+          <section class="app-panel editable-panel role-timeline-panel" id="experiences">
+            <div class="app-panel-heading editable-heading">
+              <span class="panel-title-group">
+                <span class="material-symbols-outlined panel-icon">history</span>
+                <span>
+                  <h2>工作經歷</h2>
+                  <small>Experience timeline</small>
+                </span>
+              </span>
+              <details class="panel-editor">
+                <summary class="material-symbols-outlined edit-icon">edit</summary>
+                <form class="app-form edit-form" method="post" action="/roles/{{ role.id }}/resume/experiences">
+                  <label>
+                    <span>工作經歷</span>
+                    <textarea name="experiences" rows="14" placeholder="title: 職稱&#10;company: 公司&#10;period: 2021 - Present&#10;summary: 工作摘要&#10;achievements: 成就一, 成就二&#10;technologies: Angular, Docker&#10;---">{{ edit.experiences }}</textarea>
+                  </label>
+                  <div class="app-actions">
+                    <button class="app-button app-button-primary" type="submit">儲存工作經歷</button>
+                  </div>
+                </form>
+              </details>
+            </div>
+            <div class="scan-line" aria-hidden="true"></div>
             {% if resume.experiences %}
               <div class="timeline-list">
                 {% for item in resume.experiences %}
@@ -81,14 +140,35 @@
                 {% endfor %}
               </div>
             {% else %}
-              <p>尚未解析工作經歷。請重新解析履歷或手動編輯個人資訊。</p>
+              <p>尚未解析工作經歷。可重新解析履歷或展開此區塊編輯。</p>
             {% endif %}
           </section>
 
-          <section class="app-panel">
-            <div class="app-panel-heading">
-              <h2>學歷與證照</h2>
-              <span>Education & certificates</span>
+          <section class="app-panel editable-panel" id="education">
+            <div class="app-panel-heading editable-heading">
+              <span class="panel-title-group">
+                <span class="material-symbols-outlined panel-icon">workspace_premium</span>
+                <span>
+                  <h2>學歷與證照</h2>
+                  <small>Education & certificates</small>
+                </span>
+              </span>
+              <details class="panel-editor">
+                <summary class="material-symbols-outlined edit-icon">edit</summary>
+                <form class="app-form edit-form" method="post" action="/roles/{{ role.id }}/resume/education">
+                  <label>
+                    <span>學歷，每行格式：學校 | 學位 | 科系 | 開始 | 結束</span>
+                    <textarea name="education" rows="5">{{ edit.education }}</textarea>
+                  </label>
+                  <label>
+                    <span>證照，每行格式：名稱 | 發證單位 | 日期</span>
+                    <textarea name="certificates" rows="5">{{ edit.certificates }}</textarea>
+                  </label>
+                  <div class="app-actions">
+                    <button class="app-button app-button-primary" type="submit">儲存學歷與證照</button>
+                  </div>
+                </form>
+              </details>
             </div>
             <div class="education-grid">
               {% for item in resume.education %}
@@ -109,12 +189,29 @@
             </div>
           </section>
 
-          {% if resume.projects %}
-            <section class="app-panel">
-              <div class="app-panel-heading">
-                <h2>專案</h2>
-                <span>Projects</span>
-              </div>
+          <section class="app-panel editable-panel" id="projects">
+            <div class="app-panel-heading editable-heading">
+              <span class="panel-title-group">
+                <span class="material-symbols-outlined panel-icon">deployed_code</span>
+                <span>
+                  <h2>專案</h2>
+                  <small>Projects</small>
+                </span>
+              </span>
+              <details class="panel-editor">
+                <summary class="material-symbols-outlined edit-icon">edit</summary>
+                <form class="app-form edit-form" method="post" action="/roles/{{ role.id }}/resume/projects">
+                  <label>
+                    <span>專案</span>
+                    <textarea name="projects" rows="12" placeholder="name: 專案名稱&#10;role: 角色&#10;description: 描述&#10;technologies: Vue, TypeScript&#10;outcomes: 成果一, 成果二&#10;---">{{ edit.projects }}</textarea>
+                  </label>
+                  <div class="app-actions">
+                    <button class="app-button app-button-primary" type="submit">儲存專案</button>
+                  </div>
+                </form>
+              </details>
+            </div>
+            {% if resume.projects %}
               <div class="compact-list">
                 {% for item in resume.projects %}
                   <article>
@@ -126,41 +223,34 @@
                   </article>
                 {% endfor %}
               </div>
-            </section>
-          {% endif %}
-
-          <details class="app-panel profile-edit-panel">
-            <summary>手動編輯個人資訊</summary>
-            <form class="app-form profile-form" method="post" action="/roles/{{ role.id }}/profile">
-              <label>
-                <span>姓名</span>
-                <input name="name" value="{{ profile.name or resume.name }}" placeholder="例如：王小明">
-              </label>
-              <label>
-                <span>技能</span>
-                <textarea name="skills" rows="5" placeholder="可用換行或逗號分隔">{{ profile.skills or "\n".join(resume.skills) }}</textarea>
-              </label>
-              <label>
-                <span>職涯</span>
-                <textarea name="career" rows="8" placeholder="整理工作經歷、專案與職涯重點">{{ profile.career or resume.summary }}</textarea>
-              </label>
-              <label>
-                <span>自傳</span>
-                <textarea name="autobiography" rows="8" placeholder="補充個人特質、求職方向或自傳內容">{{ profile.autobiography or resume.autobiography }}</textarea>
-              </label>
-              <div class="app-actions">
-                <button class="app-button app-button-primary" type="submit">儲存資訊</button>
-                <a class="app-button app-button-secondary" href="/roles/{{ role.id }}/import">上傳履歷</a>
-              </div>
-            </form>
-          </details>
+            {% else %}
+              <p>尚未解析專案。</p>
+            {% endif %}
+          </section>
         </div>
 
         <aside class="role-side-column">
-          <section class="app-panel">
-            <div class="app-panel-heading">
-              <h2>專業技能</h2>
-              <span>Skill matrix</span>
+          <section class="app-panel editable-panel" id="skills">
+            <div class="app-panel-heading editable-heading">
+              <span class="panel-title-group">
+                <span class="material-symbols-outlined panel-icon">terminal</span>
+                <span>
+                  <h2>專業技能</h2>
+                  <small>Skill matrix</small>
+                </span>
+              </span>
+              <details class="panel-editor">
+                <summary class="material-symbols-outlined edit-icon">edit</summary>
+                <form class="app-form edit-form" method="post" action="/roles/{{ role.id }}/resume/skills">
+                  <label>
+                    <span>技能，每行一個</span>
+                    <textarea name="skills" rows="8">{{ edit.skills }}</textarea>
+                  </label>
+                  <div class="app-actions">
+                    <button class="app-button app-button-primary" type="submit">儲存技能</button>
+                  </div>
+                </form>
+              </details>
             </div>
             <div class="tag-list">
               {% for skill in resume.skills %}
@@ -173,10 +263,39 @@
             </div>
           </section>
 
-          <section class="app-panel">
-            <div class="app-panel-heading">
-              <h2>聯繫與社群</h2>
-              <span>Contact</span>
+          <section class="app-panel editable-panel" id="contact">
+            <div class="app-panel-heading editable-heading">
+              <span class="panel-title-group">
+                <span class="material-symbols-outlined panel-icon">alternate_email</span>
+                <span>
+                  <h2>聯繫與社群</h2>
+                  <small>Contact</small>
+                </span>
+              </span>
+              <details class="panel-editor">
+                <summary class="material-symbols-outlined edit-icon">edit</summary>
+                <form class="app-form edit-form" method="post" action="/roles/{{ role.id }}/resume/contact">
+                  <label>
+                    <span>Email</span>
+                    <input name="email" value="{{ resume.contact.email }}">
+                  </label>
+                  <label>
+                    <span>電話</span>
+                    <input name="phone" value="{{ resume.contact.phone }}">
+                  </label>
+                  <label>
+                    <span>地點</span>
+                    <input name="location" value="{{ resume.contact.location }}">
+                  </label>
+                  <label>
+                    <span>連結，每行一個</span>
+                    <textarea name="links" rows="5">{{ edit.links }}</textarea>
+                  </label>
+                  <div class="app-actions">
+                    <button class="app-button app-button-primary" type="submit">儲存聯絡資料</button>
+                  </div>
+                </form>
+              </details>
             </div>
             <div class="contact-list">
               {% if resume.contact.email %}<p>{{ resume.contact.email }}</p>{% endif %}
@@ -191,31 +310,34 @@
             </div>
           </section>
 
-          {% if resume.languages %}
-            <section class="app-panel">
-              <div class="app-panel-heading">
-                <h2>語言能力</h2>
-                <span>Languages</span>
-              </div>
-              <div class="contact-list">
-                {% for language in resume.languages %}
-                  <p>{{ language.name }}{% if language.proficiency %} // {{ language.proficiency }}{% endif %}</p>
-                {% endfor %}
-              </div>
-            </section>
-          {% endif %}
-
-          <section class="app-panel">
-            <div class="app-panel-heading">
-              <h2>AI 匹配強度分析</h2>
-              <span>Profile score</span>
+          <section class="app-panel editable-panel" id="languages">
+            <div class="app-panel-heading editable-heading">
+              <span class="panel-title-group">
+                <span class="material-symbols-outlined panel-icon">translate</span>
+                <span>
+                  <h2>語言能力</h2>
+                  <small>Languages</small>
+                </span>
+              </span>
+              <details class="panel-editor">
+                <summary class="material-symbols-outlined edit-icon">edit</summary>
+                <form class="app-form edit-form" method="post" action="/roles/{{ role.id }}/resume/languages">
+                  <label>
+                    <span>語言，每行格式：語言 | 程度</span>
+                    <textarea name="languages" rows="5">{{ edit.languages }}</textarea>
+                  </label>
+                  <div class="app-actions">
+                    <button class="app-button app-button-primary" type="submit">儲存語言能力</button>
+                  </div>
+                </form>
+              </details>
             </div>
-            <div class="meter-track">
-              <span style="width: 85%"></span>
-            </div>
-            <div class="meter-caption">
-              <span>85% SCORE</span>
-              <span>READY</span>
+            <div class="contact-list">
+              {% for language in resume.languages %}
+                <p>{{ language.name }}{% if language.proficiency %} // {{ language.proficiency }}{% endif %}</p>
+              {% else %}
+                <p>尚未解析語言能力。</p>
+              {% endfor %}
             </div>
           </section>
         </aside>

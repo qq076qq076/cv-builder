@@ -6,6 +6,14 @@ from fastapi.templating import Jinja2Templates
 
 from app.config import get_settings
 from app.schemas.role import RoleProfile
+from app.schemas.resume import (
+    ResumeCertificate,
+    ResumeContact,
+    ResumeEducation,
+    ResumeExperience,
+    ResumeLanguage,
+    ResumeProject,
+)
 from app.services.job_service import JobService
 from app.services.role_service import RoleService
 from app.services.resume_normalization_service import ResumeNormalizationService
@@ -57,6 +65,7 @@ def role_detail(
             "jobs": job_service.list_jobs(),
             "generated_output": generated_output,
             "normalization_result": None,
+            "edit": _resume_edit_context(resume),
         },
     )
 
@@ -81,6 +90,107 @@ def update_role_profile(
         ),
     )
     return RedirectResponse(f"/roles/{role_id}", status_code=status.HTTP_303_SEE_OTHER)
+
+
+@router.post("/roles/{role_id}/resume/profile")
+def update_resume_profile(
+    role_id: str,
+    name: str = Form(""),
+    title: str = Form(""),
+    summary: str = Form(""),
+    autobiography: str = Form(""),
+) -> RedirectResponse:
+    repository = _resume_repository_for_role(role_id)
+    resume = repository.load()
+    repository.save(
+        resume.model_copy(
+            update={
+                "name": name,
+                "title": title,
+                "summary": summary,
+                "autobiography": autobiography,
+            }
+        )
+    )
+    return RedirectResponse(f"/roles/{role_id}#profile", status_code=status.HTTP_303_SEE_OTHER)
+
+
+@router.post("/roles/{role_id}/resume/skills")
+def update_resume_skills(role_id: str, skills: str = Form("")) -> RedirectResponse:
+    repository = _resume_repository_for_role(role_id)
+    resume = repository.load()
+    repository.save(resume.model_copy(update={"skills": _split_lines(skills)}))
+    return RedirectResponse(f"/roles/{role_id}#skills", status_code=status.HTTP_303_SEE_OTHER)
+
+
+@router.post("/roles/{role_id}/resume/contact")
+def update_resume_contact(
+    role_id: str,
+    email: str = Form(""),
+    phone: str = Form(""),
+    location: str = Form(""),
+    links: str = Form(""),
+) -> RedirectResponse:
+    repository = _resume_repository_for_role(role_id)
+    resume = repository.load()
+    repository.save(
+        resume.model_copy(
+            update={
+                "contact": ResumeContact(
+                    email=email,
+                    phone=phone,
+                    location=location,
+                    links=_split_lines(links),
+                )
+            }
+        )
+    )
+    return RedirectResponse(f"/roles/{role_id}#contact", status_code=status.HTTP_303_SEE_OTHER)
+
+
+@router.post("/roles/{role_id}/resume/experiences")
+def update_resume_experiences(role_id: str, experiences: str = Form("")) -> RedirectResponse:
+    repository = _resume_repository_for_role(role_id)
+    resume = repository.load()
+    repository.save(
+        resume.model_copy(update={"experiences": _parse_experience_blocks(experiences)})
+    )
+    return RedirectResponse(f"/roles/{role_id}#experiences", status_code=status.HTTP_303_SEE_OTHER)
+
+
+@router.post("/roles/{role_id}/resume/education")
+def update_resume_education(
+    role_id: str,
+    education: str = Form(""),
+    certificates: str = Form(""),
+) -> RedirectResponse:
+    repository = _resume_repository_for_role(role_id)
+    resume = repository.load()
+    repository.save(
+        resume.model_copy(
+            update={
+                "education": _parse_education_lines(education),
+                "certificates": _parse_certificate_lines(certificates),
+            }
+        )
+    )
+    return RedirectResponse(f"/roles/{role_id}#education", status_code=status.HTTP_303_SEE_OTHER)
+
+
+@router.post("/roles/{role_id}/resume/projects")
+def update_resume_projects(role_id: str, projects: str = Form("")) -> RedirectResponse:
+    repository = _resume_repository_for_role(role_id)
+    resume = repository.load()
+    repository.save(resume.model_copy(update={"projects": _parse_project_blocks(projects)}))
+    return RedirectResponse(f"/roles/{role_id}#projects", status_code=status.HTTP_303_SEE_OTHER)
+
+
+@router.post("/roles/{role_id}/resume/languages")
+def update_resume_languages(role_id: str, languages: str = Form("")) -> RedirectResponse:
+    repository = _resume_repository_for_role(role_id)
+    resume = repository.load()
+    repository.save(resume.model_copy(update={"languages": _parse_language_lines(languages)}))
+    return RedirectResponse(f"/roles/{role_id}#languages", status_code=status.HTTP_303_SEE_OTHER)
 
 
 @router.post("/roles/{role_id}/jobs")
@@ -157,6 +267,7 @@ def normalize_source(request: Request, role_id: str, source_id: str) -> HTMLResp
             "jobs": job_service.list_jobs(),
             "generated_output": None,
             "normalization_result": result,
+            "edit": _resume_edit_context(resume),
         },
     )
 
@@ -169,4 +280,200 @@ def _has_profile_content(profile: RoleProfile) -> bool:
             profile.career.strip(),
             profile.autobiography.strip(),
         ]
+    )
+
+
+def _resume_repository_for_role(role_id: str) -> ResumeRepository:
+    settings = get_settings()
+    role_service = RoleService(settings.workspace_path)
+    return ResumeRepository(role_service.role_path(role_id))
+
+
+def _split_lines(value: str) -> list[str]:
+    return [line.strip() for line in value.replace(",", "\n").splitlines() if line.strip()]
+
+
+def _split_blocks(value: str) -> list[str]:
+    normalized = value.replace("\r\n", "\n").strip()
+    if not normalized:
+        return []
+    return [block.strip() for block in normalized.split("\n---\n") if block.strip()]
+
+
+def _parse_kv_block(block: str) -> dict[str, str]:
+    data: dict[str, str] = {}
+    current_key = ""
+    for line in block.splitlines():
+        if ":" in line:
+            key, value = line.split(":", 1)
+            current_key = key.strip().lower()
+            data[current_key] = value.strip()
+        elif current_key:
+            data[current_key] = f"{data[current_key]}\n{line.strip()}".strip()
+    return data
+
+
+def _parse_csv(value: str) -> list[str]:
+    normalized = value.replace("\n", ",")
+    return [item.strip() for item in normalized.split(",") if item.strip()]
+
+
+def _parse_period(value: str) -> tuple[str, str]:
+    for separator in (" - ", " – ", " — ", "|"):
+        if separator in value:
+            start_date, end_date = value.split(separator, 1)
+            return start_date.strip(), end_date.strip()
+    return value.strip(), ""
+
+
+def _parse_experience_blocks(value: str) -> list[ResumeExperience]:
+    experiences = []
+    for block in _split_blocks(value):
+        data = _parse_kv_block(block)
+        start_date, end_date = _parse_period(data.get("period", ""))
+        experiences.append(
+            ResumeExperience(
+                company=data.get("company", ""),
+                title=data.get("title", ""),
+                startDate=start_date,
+                endDate=end_date,
+                summary=data.get("summary", ""),
+                achievements=_parse_csv(data.get("achievements", "")),
+                technologies=_parse_csv(data.get("technologies", "")),
+            )
+        )
+    return experiences
+
+
+def _parse_project_blocks(value: str) -> list[ResumeProject]:
+    projects = []
+    for block in _split_blocks(value):
+        data = _parse_kv_block(block)
+        projects.append(
+            ResumeProject(
+                name=data.get("name", ""),
+                role=data.get("role", ""),
+                description=data.get("description", ""),
+                technologies=_parse_csv(data.get("technologies", "")),
+                outcomes=_parse_csv(data.get("outcomes", "")),
+            )
+        )
+    return projects
+
+
+def _parse_education_lines(value: str) -> list[ResumeEducation]:
+    education = []
+    for line in _split_lines(value):
+        parts = [part.strip() for part in line.split("|")]
+        education.append(
+            ResumeEducation(
+                school=parts[0] if len(parts) > 0 else "",
+                degree=parts[1] if len(parts) > 1 else "",
+                major=parts[2] if len(parts) > 2 else "",
+                startDate=parts[3] if len(parts) > 3 else "",
+                endDate=parts[4] if len(parts) > 4 else "",
+            )
+        )
+    return education
+
+
+def _parse_certificate_lines(value: str) -> list[ResumeCertificate]:
+    certificates = []
+    for line in _split_lines(value):
+        parts = [part.strip() for part in line.split("|")]
+        certificates.append(
+            ResumeCertificate(
+                name=parts[0] if len(parts) > 0 else "",
+                issuer=parts[1] if len(parts) > 1 else "",
+                date=parts[2] if len(parts) > 2 else "",
+            )
+        )
+    return certificates
+
+
+def _parse_language_lines(value: str) -> list[ResumeLanguage]:
+    languages = []
+    for line in _split_lines(value):
+        parts = [part.strip() for part in line.replace("//", "|").split("|", 1)]
+        languages.append(
+            ResumeLanguage(
+                name=parts[0] if len(parts) > 0 else "",
+                proficiency=parts[1] if len(parts) > 1 else "",
+            )
+        )
+    return languages
+
+
+def _resume_edit_context(resume) -> dict[str, str]:
+    return {
+        "skills": "\n".join(resume.skills),
+        "links": "\n".join(resume.contact.links),
+        "experiences": _format_experiences(resume.experiences),
+        "education": _format_education(resume.education),
+        "certificates": _format_certificates(resume.certificates),
+        "projects": _format_projects(resume.projects),
+        "languages": _format_languages(resume.languages),
+    }
+
+
+def _format_experiences(experiences: list[ResumeExperience]) -> str:
+    blocks = []
+    for item in experiences:
+        period = " - ".join(value for value in [item.start_date, item.end_date] if value)
+        blocks.append(
+            "\n".join(
+                [
+                    f"title: {item.title}",
+                    f"company: {item.company}",
+                    f"period: {period}",
+                    f"summary: {item.summary}",
+                    f"achievements: {', '.join(item.achievements)}",
+                    f"technologies: {', '.join(item.technologies)}",
+                ]
+            )
+        )
+    return "\n---\n".join(blocks)
+
+
+def _format_projects(projects: list[ResumeProject]) -> str:
+    blocks = []
+    for item in projects:
+        blocks.append(
+            "\n".join(
+                [
+                    f"name: {item.name}",
+                    f"role: {item.role}",
+                    f"description: {item.description}",
+                    f"technologies: {', '.join(item.technologies)}",
+                    f"outcomes: {', '.join(item.outcomes)}",
+                ]
+            )
+        )
+    return "\n---\n".join(blocks)
+
+
+def _format_education(education: list[ResumeEducation]) -> str:
+    return "\n".join(
+        " | ".join(
+            [
+                item.school,
+                item.degree,
+                item.major,
+                item.start_date,
+                item.end_date,
+            ]
+        )
+        for item in education
+    )
+
+
+def _format_certificates(certificates: list[ResumeCertificate]) -> str:
+    return "\n".join(
+        " | ".join([item.name, item.issuer, item.date]) for item in certificates
+    )
+
+
+def _format_languages(languages: list[ResumeLanguage]) -> str:
+    return "\n".join(
+        " | ".join([item.name, item.proficiency]) for item in languages
     )

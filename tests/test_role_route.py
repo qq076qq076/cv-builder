@@ -13,6 +13,7 @@ from app.schemas.evidence import EvidenceSource
 from app.schemas.role import RoleProfile
 from app.services.role_service import RoleService
 from app.storage.evidence import EvidenceRepository
+from app.storage.resume import ResumeRepository
 
 
 class RoleRouteTest(unittest.TestCase):
@@ -63,7 +64,7 @@ class RoleRouteTest(unittest.TestCase):
             self.assertEqual(profile.name, "Walker Lin")
             self.assertEqual(profile.skills, "Python")
 
-    def test_role_detail_with_profile_shows_profile_form(self) -> None:
+    def test_role_detail_with_profile_shows_editable_resume_panels(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             workspace = Path(tmpdir) / "workspace"
             role_service = RoleService(workspace)
@@ -73,8 +74,132 @@ class RoleRouteTest(unittest.TestCase):
             response = self._client_for(workspace).get("/roles/walker")
 
             self.assertEqual(response.status_code, 200)
-            self.assertIn("個人資訊", response.text)
+            self.assertIn("個人概要", response.text)
+            self.assertIn("material-symbols-outlined edit-icon", response.text)
             self.assertIn("Walker Lin", response.text)
+            self.assertNotIn("手動編輯個人資訊", response.text)
+            self.assertNotIn("AI 匹配強度分析", response.text)
+
+    def test_update_resume_profile_writes_resume_json(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            workspace = Path(tmpdir) / "workspace"
+            RoleService(workspace).create_role("Walker")
+
+            response = self._client_for(workspace).post(
+                "/roles/walker/resume/profile",
+                data={
+                    "name": "Walker Lin",
+                    "title": "Senior Frontend Engineer",
+                    "summary": "Builds web products",
+                    "autobiography": "Bio",
+                },
+                follow_redirects=False,
+            )
+
+            self.assertEqual(response.status_code, 303)
+            resume = ResumeRepository(workspace / "walker").load()
+            self.assertEqual(resume.name, "Walker Lin")
+            self.assertEqual(resume.title, "Senior Frontend Engineer")
+            self.assertEqual(resume.summary, "Builds web products")
+
+    def test_update_resume_skills_writes_resume_json(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            workspace = Path(tmpdir) / "workspace"
+            RoleService(workspace).create_role("Walker")
+
+            response = self._client_for(workspace).post(
+                "/roles/walker/resume/skills",
+                data={"skills": "Angular\nDocker"},
+                follow_redirects=False,
+            )
+
+            self.assertEqual(response.status_code, 303)
+            resume = ResumeRepository(workspace / "walker").load()
+            self.assertEqual(resume.skills, ["Angular", "Docker"])
+
+    def test_update_resume_experiences_writes_resume_json(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            workspace = Path(tmpdir) / "workspace"
+            RoleService(workspace).create_role("Walker")
+
+            response = self._client_for(workspace).post(
+                "/roles/walker/resume/experiences",
+                data={
+                    "experiences": (
+                        "title: Senior Frontend Engineer\n"
+                        "company: Kabob\n"
+                        "period: Sep. 2022 - Present\n"
+                        "summary: Built SaaS products\n"
+                        "achievements: Led team, Improved CI\n"
+                        "technologies: Angular, Docker"
+                    )
+                },
+                follow_redirects=False,
+            )
+
+            self.assertEqual(response.status_code, 303)
+            resume = ResumeRepository(workspace / "walker").load()
+            self.assertEqual(resume.experiences[0].title, "Senior Frontend Engineer")
+            self.assertEqual(resume.experiences[0].company, "Kabob")
+            self.assertEqual(resume.experiences[0].technologies, ["Angular", "Docker"])
+
+    def test_update_resume_contact_languages_and_projects(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            workspace = Path(tmpdir) / "workspace"
+            RoleService(workspace).create_role("Walker")
+            client = self._client_for(workspace)
+
+            client.post(
+                "/roles/walker/resume/contact",
+                data={
+                    "email": "walker@example.com",
+                    "phone": "0912",
+                    "location": "Taipei",
+                    "links": "https://example.com",
+                },
+            )
+            client.post(
+                "/roles/walker/resume/languages",
+                data={"languages": "Mandarin | Native\nEnglish | Intermediate"},
+            )
+            response = client.post(
+                "/roles/walker/resume/projects",
+                data={
+                    "projects": (
+                        "name: WEBA\n"
+                        "role: Frontend\n"
+                        "description: Customer communication platform\n"
+                        "technologies: Vue, TypeScript\n"
+                        "outcomes: Launched product"
+                    )
+                },
+                follow_redirects=False,
+            )
+
+            self.assertEqual(response.status_code, 303)
+            resume = ResumeRepository(workspace / "walker").load()
+            self.assertEqual(resume.contact.email, "walker@example.com")
+            self.assertEqual(resume.languages[1].name, "English")
+            self.assertEqual(resume.projects[0].name, "WEBA")
+
+    def test_update_resume_education_writes_resume_json(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            workspace = Path(tmpdir) / "workspace"
+            RoleService(workspace).create_role("Walker")
+
+            response = self._client_for(workspace).post(
+                "/roles/walker/resume/education",
+                data={
+                    "education": "Chien Hsin University | Bachelor | CSIE | 2011 | 2015",
+                    "certificates": "AWS SAA | AWS | 2023",
+                },
+                follow_redirects=False,
+            )
+
+            self.assertEqual(response.status_code, 303)
+            resume = ResumeRepository(workspace / "walker").load()
+            self.assertEqual(resume.education[0].school, "Chien Hsin University")
+            self.assertEqual(resume.certificates[0].issuer, "AWS")
 
     def test_create_job_route_writes_role_job(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
