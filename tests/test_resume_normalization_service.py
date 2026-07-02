@@ -7,12 +7,16 @@ from unittest.mock import patch
 from app.schemas.evidence import EvidenceSource
 from app.schemas.resume import NormalizedResume
 from app.services.resume_normalization_service import ResumeNormalizationService
+from app.services.url_fetcher import UrlFetchResult
 from app.storage.evidence import EvidenceRepository
 from app.storage.resume import ResumeRepository
 
 
 class FakeParser:
+    extracted_text = ""
+
     def parse(self, *, extracted_text: str, source_id: str) -> NormalizedResume:
+        self.extracted_text = extracted_text
         return NormalizedResume(
             sourceIds=[source_id],
             name="Walker Lin",
@@ -159,6 +163,51 @@ class ResumeNormalizationServiceTest(unittest.TestCase):
 
             self.assertEqual(result.status, "completed")
             self.assertEqual(FakeProviderParser.calls, [("gemini-key", "gemini-model")])
+
+    def test_normalize_sources_fetches_url_content_before_parsing(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            role_path = Path(tmpdir) / "workspace/walker"
+            url_source_path = role_path / "evidence/files/src_url_profile.txt"
+            url_source_path.parent.mkdir(parents=True)
+            url_source_path.write_text("Source URL: https://example.com/profile\n", encoding="utf-8")
+            EvidenceRepository(role_path).add_source(
+                EvidenceSource(
+                    id="src_url",
+                    type="url",
+                    label="LinkedIn",
+                    path="evidence/files/src_url_profile.txt",
+                    originalFilename="profile.txt",
+                    contentType="text/plain",
+                    sourceUrl="https://example.com/profile",
+                    sizeBytes=40,
+                    extractionStatus="not_required",
+                    createdAt=datetime(2026, 7, 1, tzinfo=timezone.utc),
+                )
+            )
+            parser = FakeParser()
+
+            result = ResumeNormalizationService(
+                role_path=role_path,
+                api_key=None,
+                model="test-model",
+                parser=parser,
+                url_fetcher=lambda url: UrlFetchResult(
+                    url=url,
+                    status="completed",
+                    title="Walker Profile",
+                    text="Walker Lin\nSenior Python Engineer\nFastAPI",
+                ),
+            ).normalize_sources(["src_url"])
+
+            self.assertEqual(result.status, "completed")
+            self.assertIn("Page Title: Walker Profile", parser.extracted_text)
+            self.assertIn("Walker Lin", parser.extracted_text)
+            self.assertIn("Senior Python Engineer", parser.extracted_text)
+            self.assertIn("Fetched Content:", url_source_path.read_text(encoding="utf-8"))
+
+            updated_source = EvidenceRepository(role_path).get_source("src_url")
+            self.assertEqual(updated_source.extraction_status, "completed")
+            self.assertIsNotNone(updated_source.content_hash)
 
     def _role_with_source_file(
         self,

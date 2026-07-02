@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from hashlib import sha256
 from pathlib import Path
 
 from app.ai.resume_parser import GeminiResumeParser, OpenAIResumeParser, ResumeParser
@@ -9,6 +10,7 @@ from app.importers.text import can_extract_text, extract_text_from_bytes
 from app.schemas.resume import NormalizedResume
 from app.storage.evidence import EvidenceRepository
 from app.storage.resume import ResumeRepository
+from app.services.url_fetcher import UrlFetchResult, fetch_url_text, render_fetched_url_evidence
 
 
 @dataclass(frozen=True)
@@ -28,6 +30,7 @@ class ResumeNormalizationService:
         gemini_api_key: str | None = None,
         gemini_model: str = "gemini-3.5-flash",
         parser: ResumeParser | None = None,
+        url_fetcher=fetch_url_text,
     ) -> None:
         self.role_path = role_path
         self.evidence_repository = EvidenceRepository(role_path)
@@ -37,6 +40,7 @@ class ResumeNormalizationService:
         self.gemini_api_key = gemini_api_key
         self.gemini_model = gemini_model
         self.parser = parser
+        self.url_fetcher = url_fetcher
 
     def normalize_source(self, source_id: str) -> ResumeNormalizationResult:
         source = self.evidence_repository.get_source(source_id)
@@ -48,6 +52,7 @@ class ResumeNormalizationService:
                 message="缺少 OPENAI_API_KEY 或 GEMINI_API_KEY",
             )
 
+        source = self._refresh_url_source(source)
         source_path = self.role_path / source.path
         if not source_path.is_file():
             return ResumeNormalizationResult(status="no_text", message="找不到來源檔案")
@@ -95,6 +100,7 @@ class ResumeNormalizationService:
 
         source_sections = []
         for source in sources:
+            source = self._refresh_url_source(source)
             source_path = self.role_path / source.path
             if not source_path.is_file():
                 continue
@@ -145,6 +151,32 @@ class ResumeNormalizationService:
         saved_resume = self.resume_repository.save(resume)
 
         return ResumeNormalizationResult(status="completed", resume=saved_resume)
+
+    def _refresh_url_source(self, source):
+        if source.type != "url" or not source.source_url:
+            return source
+
+        result = self.url_fetcher(source.source_url)
+        if not isinstance(result, UrlFetchResult):
+            result = UrlFetchResult(
+                url=source.source_url,
+                status="failed",
+                message="URL fetcher did not return UrlFetchResult",
+            )
+        content = render_fetched_url_evidence(result).encode("utf-8")
+        source_path = self.role_path / source.path
+        source_path.parent.mkdir(parents=True, exist_ok=True)
+        source_path.write_bytes(content)
+
+        updated_source = source.model_copy(
+            update={
+                "size_bytes": len(content),
+                "content_hash": sha256(content).hexdigest(),
+                "extraction_status": result.status,
+            }
+        )
+        self.evidence_repository.update_source(updated_source)
+        return updated_source
 
     def _build_parser(self) -> ResumeParser:
         if self.api_key:
