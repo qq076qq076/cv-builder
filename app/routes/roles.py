@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from urllib.parse import quote
+from dataclasses import dataclass
+from urllib.parse import quote, urlparse
 
 from fastapi import APIRouter, File, Form, Request, UploadFile, status
 from fastapi.responses import HTMLResponse, RedirectResponse
@@ -33,6 +34,25 @@ from app.storage.resume import ResumeRepository
 
 router = APIRouter()
 templates = Jinja2Templates(directory="app/templates")
+_PLATFORM_URL_KEYS = ("linkedin", "104", "cake", "yourator")
+_PLATFORM_URL_LABELS = {
+    "linkedin": "LinkedIn",
+    "104": "104 銀行",
+    "cake": "CakeResume",
+    "yourator": "Yourator",
+}
+_PLATFORM_URL_ICONS = {
+    "linkedin": "share",
+    "104": "work",
+    "cake": "cake",
+    "yourator": "rocket_launch",
+}
+
+
+@dataclass(frozen=True)
+class SubmittedSourcesResult:
+    source_ids: list[str]
+    changed: bool
 
 
 @router.post("/roles")
@@ -64,6 +84,7 @@ def role_detail(
     profile = role_service.load_profile(role_id)
     resume = ResumeRepository(role_path).load()
     job_service = JobService(role_path)
+    sources = EvidenceRepository(role_path).list_sources().sources
     active_generated_output = (
         job_service.get_output_by_path(generated_output) if generated_output else None
     )
@@ -76,7 +97,9 @@ def role_detail(
             "profile": profile,
             "resume": resume,
             "has_role_content": _has_profile_content(profile) or resume.has_content(),
-            "sources": EvidenceRepository(role_path).list_sources().sources,
+            "sources": sources,
+            "source_urls": _source_url_values(sources),
+            "source_icon_name": _source_icon_name,
             "jobs": job_service.list_jobs(),
             "job_outputs": job_service.list_outputs_by_job(),
             "generated_output": generated_output,
@@ -177,6 +200,7 @@ async def update_role_sources(
     role_id: str,
     resume_file: UploadFile | None = File(default=None),
     source_url: list[str] = Form(default=[]),
+    source_platform: list[str] = Form(default=[]),
 ) -> HTMLResponse:
     settings = get_settings()
     role_service = RoleService(settings.workspace_path)
@@ -190,18 +214,21 @@ async def update_role_sources(
         )
 
     role_path = role_service.role_path(role_id)
-    saved_source_ids = await _save_submitted_sources(
+    saved_sources = await _update_submitted_sources(
         role_path=role_path,
         resume_file=resume_file,
         source_url=source_url,
+        source_platform=source_platform,
     )
     message = (
-        f"已更新 {len(saved_source_ids)} 筆來源。"
-        if saved_source_ids
+        f"已更新 {len(saved_sources.source_ids)} 筆來源。"
+        if saved_sources.source_ids
+        else "已更新 Evidence 來源。"
+        if saved_sources.changed
         else "請至少提供一個檔案或網址"
     )
     result = ResumeNormalizationResult(
-        status="completed" if saved_source_ids else "not_found",
+        status="completed" if saved_sources.changed else "not_found",
         message=message,
     )
     return _render_role_detail(
@@ -538,6 +565,7 @@ def _render_role_detail(
     profile = role_service.load_profile(role_id)
     resume = ResumeRepository(role_path).load()
     job_service = JobService(role_path)
+    sources = EvidenceRepository(role_path).list_sources().sources
     return templates.TemplateResponse(
         request,
         "role_detail.html",
@@ -547,7 +575,9 @@ def _render_role_detail(
             "profile": profile,
             "resume": resume,
             "has_role_content": _has_profile_content(profile) or resume.has_content(),
-            "sources": EvidenceRepository(role_path).list_sources().sources,
+            "sources": sources,
+            "source_urls": _source_url_values(sources),
+            "source_icon_name": _source_icon_name,
             "jobs": job_service.list_jobs(),
             "job_outputs": job_service.list_outputs_by_job(),
             "generated_output": None,
@@ -593,6 +623,52 @@ def _has_profile_content(profile: RoleProfile) -> bool:
     )
 
 
+def _source_url_values(sources) -> dict[str, str]:
+    values = {key: "" for key in _PLATFORM_URL_KEYS}
+    for source in sources:
+        if source.type != "url" or not source.source_url:
+            continue
+        key = _source_platform_key(source)
+        if key in values:
+            values[key] = source.source_url
+    return values
+
+
+def _source_icon_name(source) -> str:
+    if source.type == "uploaded_file":
+        return "description"
+    platform_key = _source_platform_key(source)
+    if platform_key is not None:
+        return _PLATFORM_URL_ICONS[platform_key]
+    return "link"
+
+
+def _source_platform_key(source) -> str | None:
+    key = _source_url_key(source.source_url)
+    if key is not None:
+        return key
+    normalized_label = source.label.strip().lower()
+    for platform_key, label in _PLATFORM_URL_LABELS.items():
+        if normalized_label == label.lower():
+            return platform_key
+    return None
+
+
+def _source_url_key(url: str | None) -> str | None:
+    if not url:
+        return None
+    host = urlparse(url).netloc.lower()
+    if "linkedin.com" in host:
+        return "linkedin"
+    if "104.com.tw" in host:
+        return "104"
+    if "cake.me" in host or "cakeresume.com" in host:
+        return "cake"
+    if "yourator.co" in host:
+        return "yourator"
+    return None
+
+
 def _resume_repository_for_role(role_id: str) -> ResumeRepository:
     settings = get_settings()
     role_service = RoleService(settings.workspace_path)
@@ -621,6 +697,64 @@ async def _save_submitted_sources(
         source_ids.append(saved_url.source.id)
 
     return source_ids
+
+
+async def _update_submitted_sources(
+    *,
+    role_path,
+    resume_file: UploadFile | None,
+    source_url: list[str],
+    source_platform: list[str],
+) -> SubmittedSourcesResult:
+    source_ids = await _save_submitted_sources(
+        role_path=role_path,
+        resume_file=resume_file,
+        source_url=[],
+    )
+
+    changed = bool(source_ids)
+    if source_url:
+        source_ids.extend(_replace_platform_url_sources(role_path, source_url, source_platform))
+        changed = True
+
+    return SubmittedSourcesResult(source_ids=source_ids, changed=changed)
+
+
+def _replace_platform_url_sources(
+    role_path,
+    source_url: list[str],
+    source_platform: list[str],
+) -> list[str]:
+    repository = EvidenceRepository(role_path)
+    existing_sources = repository.list_sources().sources
+    kept_sources = [
+        source
+        for source in existing_sources
+        if source.type != "url" or _source_platform_key(source) not in _PLATFORM_URL_KEYS
+    ]
+    repository.replace_sources(kept_sources)
+
+    import_service = ImportService(role_path)
+    source_ids = []
+    for key, url in _platform_url_inputs(source_url, source_platform).items():
+        if not url:
+            continue
+        saved_url = import_service.save_url_source(url=url, label=_PLATFORM_URL_LABELS[key])
+        source_ids.append(saved_url.source.id)
+    return source_ids
+
+
+def _platform_url_inputs(source_url: list[str], source_platform: list[str]) -> dict[str, str]:
+    if len(source_platform) == len(source_url):
+        return {
+            platform: url.strip()
+            for platform, url in zip(source_platform, source_url)
+            if platform in _PLATFORM_URL_KEYS
+        }
+    return {
+        key: source_url[index].strip() if index < len(source_url) else ""
+        for index, key in enumerate(_PLATFORM_URL_KEYS)
+    }
 
 
 def _split_lines(value: str) -> list[str]:

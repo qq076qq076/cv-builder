@@ -32,6 +32,14 @@ class EvidenceRepository:
         )
         return updated
 
+    def replace_sources(self, sources: list[EvidenceSource]) -> EvidenceSourceCollection:
+        updated = EvidenceSourceCollection(sources=sources)
+        atomic_write_json(
+            self.sources_path,
+            updated.model_dump(mode="json", by_alias=True),
+        )
+        return updated
+
     def get_source(self, source_id: str) -> EvidenceSource | None:
         for source in self.list_sources().sources:
             if source.id == source_id:

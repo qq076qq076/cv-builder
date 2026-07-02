@@ -65,7 +65,7 @@ class ImportService:
 
         return SavedUpload(source=source, saved_path=saved_path)
 
-    def save_url_source(self, *, url: str) -> SavedUpload:
+    def save_url_source(self, *, url: str, label: str | None = None) -> SavedUpload:
         ensure_workspace_dirs(self.workspace_path)
 
         normalized_url = url.strip()
@@ -89,7 +89,7 @@ class ImportService:
         source = EvidenceSource(
             id=source_id,
             type="url",
-            label=_url_source_label(normalized_url),
+            label=label or _url_source_label(normalized_url),
             path=relative_path.as_posix(),
             originalFilename=filename,
             contentType="text/plain",

@@ -223,8 +223,10 @@ class RoleRouteTest(unittest.TestCase):
             response = self._client_for(workspace).post(
                 "/roles/walker/sources",
                 data={
+                    "source_platform": ["linkedin", "104", "cake", "yourator"],
                     "source_url": [
-                        "https://www.linkedin.com/in/walker",
+                        "https://www.linkdin.com/in/walker",
+                        "",
                         "",
                         "https://www.yourator.co/users/walker",
                     ]
@@ -236,12 +238,50 @@ class RoleRouteTest(unittest.TestCase):
             self.assertEqual(len(sources), 2)
             self.assertEqual([source.type for source in sources], ["url", "url"])
             self.assertEqual(sources[0].label, "LinkedIn")
-            self.assertEqual(sources[0].source_url, "https://www.linkedin.com/in/walker")
+            self.assertEqual(sources[0].source_url, "https://www.linkdin.com/in/walker")
             self.assertIn("已更新 2 筆來源。", response.text)
             self.assertIn("<h3>LinkedIn</h3>", response.text)
-            self.assertIn('href="https://www.linkedin.com/in/walker"', response.text)
+            self.assertIn('href="https://www.linkdin.com/in/walker"', response.text)
+            self.assertIn('value="https://www.linkdin.com/in/walker"', response.text)
+            self.assertIn('value="https://www.yourator.co/users/walker"', response.text)
+            self.assertRegex(
+                response.text,
+                r'<article class="app-source-item evidence-source-card">[\s\S]*?'
+                r'<span class="material-symbols-outlined">share</span>[\s\S]*?'
+                r"<h3>LinkedIn</h3>",
+            )
+            self.assertRegex(
+                response.text,
+                r'<article class="app-source-item evidence-source-card">[\s\S]*?'
+                r'<span class="material-symbols-outlined">rocket_launch</span>[\s\S]*?'
+                r"<h3>Yourator</h3>",
+            )
             self.assertIn('target="_blank"', response.text)
             self.assertNotIn("www.linkedin.com-in-walker.txt", response.text)
+
+            update_response = self._client_for(workspace).post(
+                "/roles/walker/sources",
+                data={
+                    "source_platform": ["linkedin", "104", "cake", "yourator"],
+                    "source_url": [
+                        "https://www.linkedin.com/in/walker-lin",
+                        "",
+                        "",
+                        "",
+                    ]
+                },
+            )
+
+            self.assertEqual(update_response.status_code, 200)
+            updated_sources = EvidenceRepository(workspace / "walker").list_sources().sources
+            self.assertEqual(len(updated_sources), 1)
+            self.assertEqual(updated_sources[0].label, "LinkedIn")
+            self.assertEqual(
+                updated_sources[0].source_url,
+                "https://www.linkedin.com/in/walker-lin",
+            )
+            self.assertIn('value="https://www.linkedin.com/in/walker-lin"', update_response.text)
+            self.assertNotIn('href="https://www.yourator.co/users/walker"', update_response.text)
 
     def test_normalize_all_sources_processes_multiple_evidence_sources(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:

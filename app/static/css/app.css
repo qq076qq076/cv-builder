@@ -1796,6 +1796,11 @@ textarea {
   font-weight: 900;
 }
 
+.evidence-platform-card .material-symbols-outlined {
+  color: var(--color-primary);
+  font-size: 22px;
+}
+
 .evidence-platform-card input {
   border: 1px solid rgba(224, 227, 229, 0.24);
   border-radius: 0;
@@ -1818,34 +1823,6 @@ textarea {
 
 .evidence-platform-yourator {
   background: linear-gradient(110deg, rgba(11, 15, 16, 0.55), rgba(147, 0, 10, 0.12));
-}
-
-.platform-mark {
-  display: inline-grid;
-  width: 36px;
-  height: 36px;
-  place-items: center;
-  border-radius: var(--radius-sm);
-  color: #fff;
-  font-size: 16px;
-  font-weight: 900;
-}
-
-.platform-mark-linkedin {
-  background: #0a66c2;
-}
-
-.platform-mark-104 {
-  background: #f6a313;
-}
-
-.platform-mark-cake {
-  color: #7af0a6;
-  background: rgba(122, 240, 166, 0.16);
-}
-
-.platform-mark-yourator {
-  background: #ff4357;
 }
 
 .source-link {

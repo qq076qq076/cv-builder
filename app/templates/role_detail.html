@@ -728,31 +728,35 @@
           <div class="evidence-platform-grid">
             <label class="evidence-platform-card evidence-platform-linkedin">
               <span>
-                <span class="platform-mark platform-mark-linkedin">in</span>
+                <span class="material-symbols-outlined">share</span>
                 <strong>LinkedIn</strong>
               </span>
-              <input name="source_url" type="url" placeholder="https://www.linkedin.com/in/...">
+              <input name="source_platform" type="hidden" value="linkedin">
+              <input name="source_url" type="url" value="{{ source_urls.linkedin }}" placeholder="https://www.linkedin.com/in/...">
             </label>
             <label class="evidence-platform-card evidence-platform-104">
               <span>
-                <span class="platform-mark platform-mark-104">104</span>
+                <span class="material-symbols-outlined">work</span>
                 <strong>104 銀行</strong>
               </span>
-              <input name="source_url" type="url" placeholder="https://pda.104.com.tw/profile/...">
+              <input name="source_platform" type="hidden" value="104">
+              <input name="source_url" type="url" value="{{ source_urls['104'] }}" placeholder="https://pda.104.com.tw/profile/...">
             </label>
             <label class="evidence-platform-card evidence-platform-cake">
               <span>
-                <span class="platform-mark platform-mark-cake">C</span>
+                <span class="material-symbols-outlined">cake</span>
                 <strong>CakeResume</strong>
               </span>
-              <input name="source_url" type="url" placeholder="https://cakeresume.com/...">
+              <input name="source_platform" type="hidden" value="cake">
+              <input name="source_url" type="url" value="{{ source_urls.cake }}" placeholder="https://cakeresume.com/...">
             </label>
             <label class="evidence-platform-card evidence-platform-yourator">
               <span>
-                <span class="platform-mark platform-mark-yourator">Y</span>
+                <span class="material-symbols-outlined">rocket_launch</span>
                 <strong>Yourator</strong>
               </span>
-              <input name="source_url" type="url" placeholder="https://yourator.co/p/...">
+              <input name="source_platform" type="hidden" value="yourator">
+              <input name="source_url" type="url" value="{{ source_urls.yourator }}" placeholder="https://yourator.co/p/...">
             </label>
           </div>
 
@@ -767,7 +771,7 @@
                 {% if source.type == "uploaded_file" or source.source_url %}
                   <article class="evidence-source-card evidence-source-edit-card">
                     <span class="source-type-icon">
-                      <span class="material-symbols-outlined">{% if source.type == "uploaded_file" %}description{% else %}link{% endif %}</span>
+                      <span class="material-symbols-outlined">{{ source_icon_name(source) }}</span>
                     </span>
                     <span>
                       <strong>{{ source.label }}</strong>
@@ -816,7 +820,7 @@
             {% if source.type == "uploaded_file" or source.source_url %}
               <article class="app-source-item evidence-source-card">
                 <div class="source-type-icon">
-                  <span class="material-symbols-outlined">{% if source.type == "uploaded_file" %}description{% else %}link{% endif %}</span>
+                  <span class="material-symbols-outlined">{{ source_icon_name(source) }}</span>
                 </div>
                 <div>
                   <h3>{{ source.label }}</h3>
