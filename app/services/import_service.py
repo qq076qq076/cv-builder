@@ -5,7 +5,7 @@ from hashlib import sha256
 import uuid
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 from urllib.parse import urlparse
 
 from app.schemas.evidence import EvidenceSource
@@ -148,7 +148,7 @@ class ImportService:
 
 
 def _safe_filename(filename: str) -> str:
-    path_name = Path(filename).name.strip()
+    path_name = PureWindowsPath(filename).name.strip()
     normalized = re.sub(r"[^A-Za-z0-9._-]+", "-", path_name)
     normalized = normalized.strip(".-")
     return normalized or "upload"

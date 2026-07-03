@@ -32,6 +32,28 @@ class RoleServiceTest(unittest.TestCase):
 
             self.assertEqual([role.id for role in roles], ["walker"])
 
+    def test_list_roles_ignores_legacy_workspace_directories_case_insensitively(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            workspace = Path(tmpdir) / "workspace"
+            (workspace / "Evidence").mkdir(parents=True)
+            service = RoleService(workspace)
+            service.create_role("Walker")
+
+            roles = service.list_roles()
+
+            self.assertEqual([role.id for role in roles], ["walker"])
+
+    def test_create_role_avoids_case_insensitive_directory_collision(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            workspace = Path(tmpdir) / "workspace"
+            (workspace / "Walker").mkdir(parents=True)
+            service = RoleService(workspace)
+
+            role = service.create_role("walker")
+
+            self.assertEqual(role.id, "walker-2")
+            self.assertTrue((workspace / "walker-2/metadata.json").is_file())
+
     def test_save_profile_writes_to_role_evidence(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             workspace = Path(tmpdir) / "workspace"

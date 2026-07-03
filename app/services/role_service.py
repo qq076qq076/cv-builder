@@ -11,6 +11,7 @@ from app.storage.atomic import atomic_write_json
 from app.storage.workspace import ensure_workspace_dirs
 
 LEGACY_WORKSPACE_DIRS = {"evidence", "jobs", "outputs", "versions"}
+LEGACY_WORKSPACE_DIR_NAMES = {name.casefold() for name in LEGACY_WORKSPACE_DIRS}
 
 
 class RoleService:
@@ -23,7 +24,7 @@ class RoleService:
 
         roles = []
         for path in sorted(self.workspace_path.iterdir()):
-            if not path.is_dir() or path.name in LEGACY_WORKSPACE_DIRS:
+            if not path.is_dir() or path.name.casefold() in LEGACY_WORKSPACE_DIR_NAMES:
                 continue
             metadata = self.get_role(path.name)
             if metadata is not None:
@@ -42,7 +43,7 @@ class RoleService:
                 return None
             return RoleMetadata.model_validate(data)
 
-        if role_path.is_dir() and role_id not in LEGACY_WORKSPACE_DIRS:
+        if role_path.is_dir() and role_id.casefold() not in LEGACY_WORKSPACE_DIR_NAMES:
             metadata = RoleMetadata(
                 id=role_id,
                 name=role_id,
@@ -106,7 +107,8 @@ class RoleService:
         role_id = base_role_id or "role"
         candidate = role_id
         index = 2
-        while self.role_path(candidate).exists() or candidate in LEGACY_WORKSPACE_DIRS:
+        existing_names = _workspace_entry_names(self.workspace_path)
+        while candidate.casefold() in existing_names or candidate.casefold() in LEGACY_WORKSPACE_DIR_NAMES:
             candidate = f"{role_id}-{index}"
             index += 1
         return candidate
@@ -116,6 +118,12 @@ def _slugify(value: str) -> str:
     normalized = re.sub(r"[^A-Za-z0-9._-]+", "-", value.strip().lower())
     normalized = normalized.strip(".-")
     return normalized or "role"
+
+
+def _workspace_entry_names(workspace_path: Path) -> set[str]:
+    if not workspace_path.is_dir():
+        return set()
+    return {path.name.casefold() for path in workspace_path.iterdir()}
 
 
 def _resume_career_text(resume: NormalizedResume) -> str:

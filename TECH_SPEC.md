@@ -186,6 +186,12 @@ cv-builder/
 CV_BUILDER_WORKSPACE=/Users/me/career-workspace
 ```
 
+Windows PowerShell：
+
+```powershell
+$env:CV_BUILDER_WORKSPACE = "C:\Users\me\career-workspace"
+```
+
 ---
 
 ## 工作區結構
@@ -623,6 +629,14 @@ dev = [
 ```bash
 uv sync
 cp .env.example .env
+uv run uvicorn app.main:app --reload
+```
+
+Windows PowerShell：
+
+```powershell
+uv sync
+Copy-Item .env.example .env
 uv run uvicorn app.main:app --reload
 ```
 

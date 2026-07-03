@@ -51,6 +51,20 @@ class ImportServiceTest(unittest.TestCase):
             self.assertIsNone(saved_upload.source.extracted_text_path)
             self.assertFalse((workspace / "evidence/extracted").exists())
 
+    def test_save_uploaded_file_normalizes_windows_filename(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            workspace = Path(tmpdir) / "workspace"
+            service = ImportService(workspace)
+
+            saved_upload = service.save_uploaded_file(
+                filename=r"C:\fakepath\My Resume.txt",
+                content_type="text/plain",
+                content=b"hello",
+            )
+
+            self.assertTrue(saved_upload.source.path.endswith("_My-Resume.txt"))
+            self.assertEqual(saved_upload.source.original_filename, r"C:\fakepath\My Resume.txt")
+
     def test_duplicate_content_reuses_existing_source_without_extracting(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             workspace = Path(tmpdir) / "workspace"
