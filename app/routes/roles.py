@@ -101,7 +101,7 @@ def role_detail(
             "role": role,
             "profile": profile,
             "resume": resume,
-            "has_role_content": _has_profile_content(profile) or resume.has_content(),
+            "has_role_content": _has_role_content(profile, resume, sources),
             "sources": sources,
             "source_urls": _source_url_values(sources),
             "source_icon_name": _source_icon_name,
@@ -144,6 +144,7 @@ async def initialize_role_sources(
     role_id: str,
     resume_file: UploadFile | None = File(default=None),
     source_url: list[str] = Form(default=[]),
+    target_language: str = Form(default="zh"),
 ) -> HTMLResponse:
     settings = get_settings()
     role_service = RoleService(settings.workspace_path)
@@ -180,7 +181,7 @@ async def initialize_role_sources(
         model=settings.openai_model,
         gemini_api_key=settings.gemini_api_key,
         gemini_model=settings.gemini_model,
-    ).normalize_sources(source_ids)
+    ).normalize_sources(source_ids, target_language=target_language)
     if result.status == "completed" and result.resume is not None:
         role_service.sync_profile_from_resume(role_id, result.resume)
         result = ResumeNormalizationResult(
@@ -332,9 +333,7 @@ def update_resume_experiences(
         if experience_title
         else _parse_experience_blocks(experiences)
     )
-    repository.save(
-        resume.model_copy(update={"experiences": parsed_experiences})
-    )
+    repository.save(resume.model_copy(update={"experiences": parsed_experiences}))
     return RedirectResponse(f"/roles/{role_id}#experiences", status_code=status.HTTP_303_SEE_OTHER)
 
 
@@ -479,7 +478,12 @@ def generate_role_job_output(
 
 
 @router.post("/roles/{role_id}/sources/{source_id}/normalize", response_class=HTMLResponse)
-def normalize_source(request: Request, role_id: str, source_id: str) -> HTMLResponse:
+def normalize_source(
+    request: Request,
+    role_id: str,
+    source_id: str,
+    target_language: str = Form(default="zh"),
+) -> HTMLResponse:
     settings = get_settings()
     role_service = RoleService(settings.workspace_path)
     role = role_service.get_role(role_id)
@@ -498,7 +502,7 @@ def normalize_source(request: Request, role_id: str, source_id: str) -> HTMLResp
         model=settings.openai_model,
         gemini_api_key=settings.gemini_api_key,
         gemini_model=settings.gemini_model,
-    ).normalize_source(source_id)
+    ).normalize_source(source_id, target_language=target_language)
     if result.status == "completed" and result.resume is not None:
         role_service.sync_profile_from_resume(role_id, result.resume)
     return _render_role_detail(
@@ -512,7 +516,11 @@ def normalize_source(request: Request, role_id: str, source_id: str) -> HTMLResp
 
 
 @router.post("/roles/{role_id}/sources/normalize", response_class=HTMLResponse)
-def normalize_all_sources(request: Request, role_id: str) -> HTMLResponse:
+def normalize_all_sources(
+    request: Request,
+    role_id: str,
+    target_language: str = Form(default="zh"),
+) -> HTMLResponse:
     settings = get_settings()
     role_service = RoleService(settings.workspace_path)
     role = role_service.get_role(role_id)
@@ -544,7 +552,10 @@ def normalize_all_sources(request: Request, role_id: str) -> HTMLResponse:
         gemini_api_key=settings.gemini_api_key,
         gemini_model=settings.gemini_model,
     )
-    result = service.normalize_sources([source.id for source in sources])
+    result = service.normalize_sources(
+        [source.id for source in sources],
+        target_language=target_language,
+    )
     if result.status == "completed" and result.resume is not None:
         role_service.sync_profile_from_resume(role_id, result.resume)
         result = ResumeNormalizationResult(
@@ -584,7 +595,7 @@ def _render_role_detail(
             "role": role,
             "profile": profile,
             "resume": resume,
-            "has_role_content": _has_profile_content(profile) or resume.has_content(),
+            "has_role_content": _has_role_content(profile, resume, sources),
             "sources": sources,
             "source_urls": _source_url_values(sources),
             "source_icon_name": _source_icon_name,
@@ -654,6 +665,10 @@ def _has_profile_content(profile: RoleProfile) -> bool:
             profile.autobiography.strip(),
         ]
     )
+
+
+def _has_role_content(profile: RoleProfile, resume, sources: list) -> bool:
+    return _has_profile_content(profile) or resume.has_content() or bool(sources)
 
 
 def _source_url_values(sources) -> dict[str, str]:
@@ -1086,12 +1101,8 @@ def _format_education(education: list[ResumeEducation]) -> str:
 
 
 def _format_certificates(certificates: list[ResumeCertificate]) -> str:
-    return "\n".join(
-        " | ".join([item.name, item.issuer, item.date]) for item in certificates
-    )
+    return "\n".join(" | ".join([item.name, item.issuer, item.date]) for item in certificates)
 
 
 def _format_languages(languages: list[ResumeLanguage]) -> str:
-    return "\n".join(
-        " | ".join([item.name, item.proficiency]) for item in languages
-    )
+    return "\n".join(" | ".join([item.name, item.proficiency]) for item in languages)

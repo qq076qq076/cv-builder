@@ -18,7 +18,7 @@ Rules:
 - Preserve facts from the input only.
 - Do not invent companies, dates, skills, degrees, links, or achievements.
 - If a field is not present, return an empty string or empty list.
-- Keep original language where possible.
+- Keep original language where possible unless a target output language is specified.
 - Use concise summaries.
 - Extract every visible section. Do not stop after the header.
 - If the resume contains SKILLS, EXPERIENCE, EDUCATION, PROJECTS, or Languages sections,
@@ -101,7 +101,13 @@ RESUME_PARSE_OUTPUT_RULES = """Output rules:
 
 
 class ResumeParser(Protocol):
-    def parse(self, *, extracted_text: str, source_id: str) -> NormalizedResume:
+    def parse(
+        self,
+        *,
+        extracted_text: str,
+        source_id: str,
+        target_language: str | None = None,
+    ) -> NormalizedResume:
         pass
 
     def parse_file(
@@ -112,6 +118,7 @@ class ResumeParser(Protocol):
         content: bytes,
         extracted_text: str | None = None,
         source_id: str,
+        target_language: str | None = None,
     ) -> NormalizedResume:
         pass
 
@@ -122,10 +129,23 @@ class OpenAIResumeParser:
         self.model = model
         self.log_path = log_path
 
-    def parse(self, *, extracted_text: str, source_id: str) -> NormalizedResume:
+    def parse(
+        self,
+        *,
+        extracted_text: str,
+        source_id: str,
+        target_language: str | None = None,
+    ) -> NormalizedResume:
         messages = [
             {"role": "system", "content": RESUME_PARSE_SYSTEM_PROMPT},
-            {"role": "user", "content": build_resume_parse_prompt(source_id, extracted_text)},
+            {
+                "role": "user",
+                "content": build_resume_parse_prompt(
+                    source_id,
+                    extracted_text,
+                    target_language=target_language,
+                ),
+            },
         ]
         _debug_log_ai_payload(
             "OpenAI input",
@@ -158,8 +178,13 @@ class OpenAIResumeParser:
         content: bytes,
         extracted_text: str | None = None,
         source_id: str,
+        target_language: str | None = None,
     ) -> NormalizedResume:
-        prompt = build_resume_file_prompt(source_id, extracted_text)
+        prompt = build_resume_file_prompt(
+            source_id,
+            extracted_text,
+            target_language=target_language,
+        )
         file_data = _file_data_url(content_type, content)
         messages = [
             {"role": "system", "content": RESUME_PARSE_SYSTEM_PROMPT},
@@ -206,10 +231,20 @@ class GeminiResumeParser:
         self.model = model
         self.log_path = log_path
 
-    def parse(self, *, extracted_text: str, source_id: str) -> NormalizedResume:
+    def parse(
+        self,
+        *,
+        extracted_text: str,
+        source_id: str,
+        target_language: str | None = None,
+    ) -> NormalizedResume:
         payload = {
             "model": self.model,
-            "input": build_resume_parse_prompt(source_id, extracted_text),
+            "input": build_resume_parse_prompt(
+                source_id,
+                extracted_text,
+                target_language=target_language,
+            ),
             "response_format": {
                 "type": "text",
                 "mime_type": "application/json",
@@ -230,8 +265,13 @@ class GeminiResumeParser:
         content: bytes,
         extracted_text: str | None = None,
         source_id: str,
+        target_language: str | None = None,
     ) -> NormalizedResume:
-        prompt = build_resume_file_prompt(source_id, extracted_text)
+        prompt = build_resume_file_prompt(
+            source_id,
+            extracted_text,
+            target_language=target_language,
+        )
         payload = {
             "model": self.model,
             "input": [
@@ -344,24 +384,36 @@ def _looks_like_resume_payload(data: dict) -> bool:
     return any(field in data for field in resume_fields)
 
 
-def build_resume_parse_prompt(source_id: str, extracted_text: str) -> str:
+def build_resume_parse_prompt(
+    source_id: str,
+    extracted_text: str,
+    *,
+    target_language: str | None = None,
+) -> str:
     return (
         f"Source ID: {source_id}\n\n"
         f"{RESUME_JSON_TEMPLATE}\n"
         f"{RESUME_EXTRACTION_CHECKLIST}\n"
         f"{RESUME_PARSE_OUTPUT_RULES}\n"
+        f"{_language_instruction(target_language)}"
         "Normalize the following resume text into the requested JSON schema. "
         "Return only JSON, no markdown.\n\n"
         f"{extracted_text}"
     )
 
 
-def build_resume_file_prompt(source_id: str, extracted_text: str | None = None) -> str:
+def build_resume_file_prompt(
+    source_id: str,
+    extracted_text: str | None = None,
+    *,
+    target_language: str | None = None,
+) -> str:
     prompt = (
         f"Source ID: {source_id}\n\n"
         f"{RESUME_JSON_TEMPLATE}\n"
         f"{RESUME_EXTRACTION_CHECKLIST}\n"
         f"{RESUME_PARSE_OUTPUT_RULES}\n"
+        f"{_language_instruction(target_language)}"
         "Analyze the attached resume file directly. "
         "Use the visual document content and text in the file. "
         "Return only JSON, no markdown."
@@ -375,6 +427,24 @@ def build_resume_file_prompt(source_id: str, extracted_text: str | None = None) 
         "Supplemental extracted text from the same uploaded file. "
         "Use this text to recover sections if the document renderer misses content:\n\n"
         f"{normalized_text}"
+    )
+
+
+def _language_instruction(target_language: str | None) -> str:
+    if target_language == "zh":
+        language_name = "Traditional Chinese"
+    elif target_language == "en":
+        language_name = "English"
+    else:
+        return ""
+
+    return (
+        f"Language conversion rule: output all human-readable resume fields in {language_name}. "
+        "Translate summaries, autobiography, experience descriptions, achievements, project "
+        "descriptions, education descriptions, certificate names when appropriate, and language "
+        "proficiency labels. Preserve names, company names, school names, product names, URLs, "
+        "email addresses, dates, and technical keywords unless they have a standard translation. "
+        "Return only the JSON object with translated field values.\n"
     )
 
 

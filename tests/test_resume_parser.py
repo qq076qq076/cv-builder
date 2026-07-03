@@ -63,6 +63,16 @@ class GeminiResponseParserTest(unittest.TestCase):
         self.assertIn("Return every top-level JSON key", prompt)
         self.assertIn("Walker Lin", prompt)
 
+    def test_resume_prompt_includes_target_language_instruction(self) -> None:
+        prompt = build_resume_parse_prompt(
+            "src_1",
+            "Walker Lin\nSKILLS\nAngular",
+            target_language="en",
+        )
+
+        self.assertIn("output all human-readable resume fields in English", prompt)
+        self.assertIn("Preserve names, company names", prompt)
+
     def test_resume_response_schema_requires_all_resume_sections(self) -> None:
         schema = _resume_response_schema()
 
@@ -74,9 +84,14 @@ class GeminiResponseParserTest(unittest.TestCase):
         self.assertIn("email", schema["$defs"]["ResumeContact"]["required"])
 
     def test_resume_file_prompt_includes_supplemental_text(self) -> None:
-        prompt = build_resume_file_prompt("src_1", "Walker Lin\nSKILLS\nAngular")
+        prompt = build_resume_file_prompt(
+            "src_1",
+            "Walker Lin\nSKILLS\nAngular",
+            target_language="zh",
+        )
 
         self.assertIn("Supplemental extracted text", prompt)
+        self.assertIn("Traditional Chinese", prompt)
         self.assertIn("Walker Lin", prompt)
         self.assertIn("Angular", prompt)
 
@@ -112,8 +127,7 @@ class GeminiResponseParserTest(unittest.TestCase):
                 _debug_log_ai_payload("AI output", '{"name":"Walker"}', log_path)
 
             entries = [
-                json.loads(line)
-                for line in log_path.read_text(encoding="utf-8").splitlines()
+                json.loads(line) for line in log_path.read_text(encoding="utf-8").splitlines()
             ]
 
         self.assertEqual(entries[0]["label"], "AI input")

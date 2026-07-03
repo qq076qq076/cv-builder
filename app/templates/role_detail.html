@@ -47,7 +47,8 @@
           </div>
         </div>
         <div class="initialize-console">
-          <form class="initialize-upload-card" method="post" action="/roles/{{ role.id }}/initialize" enctype="multipart/form-data" data-loading-form>
+          <form class="initialize-upload-card" method="post" action="/roles/{{ role.id }}/initialize" enctype="multipart/form-data" data-loading-form data-language-popup>
+            <input name="target_language" type="hidden" value="zh" data-target-language-input>
             <div class="scan-line" aria-hidden="true"></div>
             <div class="initialize-upload-panel">
               <span class="material-symbols-outlined upload-panel-icon">upload_file</span>
@@ -703,7 +704,8 @@
           </span>
         </span>
         <div class="evidence-actions">
-          <form class="evidence-normalize-form" method="post" action="/roles/{{ role.id }}/sources/normalize" data-loading-form>
+          <form class="evidence-normalize-form" method="post" action="/roles/{{ role.id }}/sources/normalize" data-loading-form data-language-popup>
+            <input name="target_language" type="hidden" value="zh" data-target-language-input>
             <button class="app-button app-button-accent loading-button" type="submit" data-loading-label="解析中" {% if not sources %}disabled{% endif %}>
               <span class="button-label">
                 <span class="material-symbols-outlined">auto_fix_high</span>
@@ -881,6 +883,23 @@
     </section>
     {% endif %}
   </section>
+  <dialog class="language-dialog" data-language-dialog aria-labelledby="language-dialog-title">
+    <div class="language-dialog-panel">
+      <header>
+        <span class="material-symbols-outlined">translate</span>
+        <div>
+          <p class="app-kicker">Output language</p>
+          <h2 id="language-dialog-title">選擇解析語言</h2>
+        </div>
+      </header>
+      <div class="language-dialog-actions">
+        <button class="app-button app-button-primary" type="button" data-language-choice="zh">中文</button>
+        <button class="app-button app-button-secondary" type="button" data-language-choice="en">English</button>
+      </div>
+      <button class="language-dialog-cancel" type="button" data-language-cancel>取消</button>
+    </div>
+  </dialog>
+
   <script>
     document.querySelectorAll("[data-add-repeatable]").forEach((button) => {
       button.addEventListener("click", () => {
@@ -892,6 +911,52 @@
         list.append(template.content.firstElementChild.cloneNode(true));
       });
     });
+
+    const languageDialog = document.querySelector("[data-language-dialog]");
+    let activeLanguageForm = null;
+
+    const setupLanguagePopup = (form) => {
+      const languageInput = form.querySelector("[data-target-language-input]");
+      if (!languageDialog || !languageInput) return;
+
+      form.addEventListener("submit", (event) => {
+        if (form.dataset.languageConfirmed === "true") {
+          return;
+        }
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        activeLanguageForm = form;
+        if (typeof languageDialog.showModal === "function") {
+          languageDialog.showModal();
+        } else {
+          languageInput.value = window.confirm("使用英文解析？") ? "en" : "zh";
+          form.dataset.languageConfirmed = "true";
+          form.requestSubmit();
+        }
+      });
+    };
+
+    if (languageDialog) {
+      languageDialog.querySelectorAll("[data-language-choice]").forEach((button) => {
+        button.addEventListener("click", () => {
+          if (!activeLanguageForm) return;
+          const languageInput = activeLanguageForm.querySelector("[data-target-language-input]");
+          if (!languageInput) return;
+          languageInput.value = button.dataset.languageChoice || "zh";
+          activeLanguageForm.dataset.languageConfirmed = "true";
+          languageDialog.close();
+          activeLanguageForm.requestSubmit();
+          activeLanguageForm = null;
+        });
+      });
+
+      languageDialog.querySelector("[data-language-cancel]")?.addEventListener("click", () => {
+        activeLanguageForm = null;
+        languageDialog.close();
+      });
+    }
+
+    document.querySelectorAll("[data-language-popup]").forEach(setupLanguagePopup);
 
     document.querySelectorAll("[data-loading-form]").forEach((form) => {
       form.addEventListener("submit", () => {

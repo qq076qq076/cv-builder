@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from hashlib import sha256
+import inspect
 from pathlib import Path
 
 from app.ai.resume_parser import GeminiResumeParser, OpenAIResumeParser, ResumeParser
@@ -43,7 +44,12 @@ class ResumeNormalizationService:
         self.parser = parser
         self.url_fetcher = url_fetcher
 
-    def normalize_source(self, source_id: str) -> ResumeNormalizationResult:
+    def normalize_source(
+        self,
+        source_id: str,
+        *,
+        target_language: str | None = None,
+    ) -> ResumeNormalizationResult:
         source = self.evidence_repository.get_source(source_id)
         if source is None:
             return ResumeNormalizationResult(status="not_found", message="找不到來源")
@@ -91,6 +97,7 @@ class ResumeNormalizationService:
                 content=content,
                 extracted_text=extracted_text,
                 source_id=source.id,
+                target_language=_normalize_target_language(target_language),
             )
             _validate_resume_detail(resume)
         except Exception as exc:
@@ -104,7 +111,12 @@ class ResumeNormalizationService:
 
         return ResumeNormalizationResult(status="completed", resume=saved_resume)
 
-    def normalize_sources(self, source_ids: list[str]) -> ResumeNormalizationResult:
+    def normalize_sources(
+        self,
+        source_ids: list[str],
+        *,
+        target_language: str | None = None,
+    ) -> ResumeNormalizationResult:
         sources = [
             source
             for source_id in source_ids
@@ -177,7 +189,14 @@ class ResumeNormalizationService:
 
         parser = self.parser or self._build_parser()
         try:
-            resume = parser.parse(extracted_text=combined_text, source_id=combined_source_id)
+            resume = _call_parser_method(
+                parser.parse,
+                {
+                    "extracted_text": combined_text,
+                    "source_id": combined_source_id,
+                    "target_language": _normalize_target_language(target_language),
+                },
+            )
             resume = resume.model_copy(update={"source_ids": [source.id for source in sources]})
             _validate_resume_detail(resume)
         except Exception as exc:
@@ -239,20 +258,29 @@ def _parse_source_file(
     content: bytes,
     extracted_text: str | None,
     source_id: str,
+    target_language: str | None = None,
 ) -> NormalizedResume:
     parse_file = getattr(parser, "parse_file", None)
     if callable(parse_file):
-        return parse_file(
-            filename=filename,
-            content_type=content_type,
-            content=content,
-            extracted_text=extracted_text,
-            source_id=source_id,
+        return _call_parser_method(
+            parse_file,
+            {
+                "filename": filename,
+                "content_type": content_type,
+                "content": content,
+                "extracted_text": extracted_text,
+                "source_id": source_id,
+                "target_language": target_language,
+            },
         )
 
-    return parser.parse(
-        extracted_text=extracted_text or content.decode("utf-8", errors="ignore"),
-        source_id=source_id,
+    return _call_parser_method(
+        parser.parse,
+        {
+            "extracted_text": extracted_text or content.decode("utf-8", errors="ignore"),
+            "source_id": source_id,
+            "target_language": target_language,
+        },
     )
 
 
@@ -317,3 +345,24 @@ def _ai_parse_failure_message(exc: Exception) -> str:
 def _looks_like_timeout(exc: Exception) -> bool:
     text = f"{exc.__class__.__name__}: {exc}".lower()
     return "timeout" in text or "timed out" in text or "逾時" in text
+
+
+def _normalize_target_language(target_language: str | None) -> str | None:
+    if target_language in {"zh", "en"}:
+        return target_language
+    return None
+
+
+def _call_parser_method(method, kwargs: dict) -> NormalizedResume:
+    accepted_kwargs = {
+        key: value for key, value in kwargs.items() if _method_accepts_keyword(method, key)
+    }
+    return method(**accepted_kwargs)
+
+
+def _method_accepts_keyword(method, keyword: str) -> bool:
+    signature = inspect.signature(method)
+    return keyword in signature.parameters or any(
+        parameter.kind == inspect.Parameter.VAR_KEYWORD
+        for parameter in signature.parameters.values()
+    )

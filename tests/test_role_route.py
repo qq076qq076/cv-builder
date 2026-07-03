@@ -61,7 +61,7 @@ class FakeResumeNormalizationService:
         self.gemini_api_key = gemini_api_key
         self.gemini_model = gemini_model
 
-    def normalize_source(self, source_id: str):
+    def normalize_source(self, source_id: str, *, target_language: str | None = None):
         from app.services.resume_normalization_service import ResumeNormalizationResult
 
         self.calls.append(source_id)
@@ -70,13 +70,35 @@ class FakeResumeNormalizationService:
             resume=NormalizedResume(sourceIds=[source_id], name="Walker Lin", skills=["Python"]),
         )
 
-    def normalize_sources(self, source_ids: list[str]):
+    def normalize_sources(
+        self,
+        source_ids: list[str],
+        *,
+        target_language: str | None = None,
+    ):
         from app.services.resume_normalization_service import ResumeNormalizationResult
 
-        self.calls.append(tuple(source_ids))
+        self.calls.append((tuple(source_ids), target_language))
         return ResumeNormalizationResult(
             status="completed",
             resume=NormalizedResume(sourceIds=source_ids, name="Walker Lin", skills=["Python"]),
+        )
+
+
+class FailingResumeNormalizationService(FakeResumeNormalizationService):
+    def normalize_sources(
+        self,
+        source_ids: list[str],
+        *,
+        target_language: str | None = None,
+    ):
+        from app.services.resume_normalization_service import ResumeNormalizationResult
+
+        self.calls.append((tuple(source_ids), target_language))
+        return ResumeNormalizationResult(
+            status="fetch_failed",
+            message="URL 抓取階段失敗：Playwright 抓取逾時",
+            error_stage="url_fetch",
         )
 
 
@@ -95,6 +117,23 @@ class RoleRouteTest(unittest.TestCase):
             self.assertEqual(response.headers["location"], "/roles/walker")
             self.assertTrue((workspace / "walker/evidence/profile.json").is_file())
 
+    def test_saved_sources_count_as_role_content(self) -> None:
+        from app.routes.roles import _has_role_content
+
+        source = EvidenceSource(
+            id="src_1",
+            label="104 銀行",
+            path="evidence/files/src_1.txt",
+            originalFilename="src_1.txt",
+            contentType="text/plain",
+            sourceUrl="https://pda.104.com.tw/profile/share/demo",
+            sizeBytes=12,
+            extractionStatus="failed",
+            createdAt=datetime(2026, 7, 1, tzinfo=timezone.utc),
+        )
+
+        self.assertTrue(_has_role_content(RoleProfile(), NormalizedResume(), [source]))
+
     def test_role_detail_shows_profile_form(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             workspace = Path(tmpdir) / "workspace"
@@ -108,6 +147,8 @@ class RoleRouteTest(unittest.TestCase):
             self.assertIn('action="/roles/walker/initialize"', response.text)
             self.assertIn("data-loading-form", response.text)
             self.assertIn('data-loading-label="初始化中"', response.text)
+            self.assertIn("data-language-popup", response.text)
+            self.assertIn('name="target_language"', response.text)
             self.assertIn('name="source_url"', response.text)
             self.assertNotIn("Evidence 來源", response.text)
             self.assertNotIn("姓名</span>", response.text)
@@ -136,9 +177,62 @@ class RoleRouteTest(unittest.TestCase):
             self.assertEqual(response.status_code, 200)
             sources = EvidenceRepository(workspace / "walker").list_sources().sources
             self.assertEqual(len(sources), 3)
-            self.assertEqual(FakeResumeNormalizationService.calls, [tuple(source.id for source in sources)])
+            self.assertEqual(
+                FakeResumeNormalizationService.calls,
+                [(tuple(source.id for source in sources), "zh")],
+            )
             self.assertIn("已整合 3 筆來源並完成初始化。", response.text)
             self.assertEqual(RoleService(workspace).load_profile("walker").name, "Walker Lin")
+
+    def test_initialize_failure_with_saved_sources_shows_detail_view(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            workspace = Path(tmpdir) / "workspace"
+            RoleService(workspace).create_role("Walker")
+            FailingResumeNormalizationService.calls = []
+
+            with patch(
+                "app.routes.roles.ResumeNormalizationService",
+                FailingResumeNormalizationService,
+            ):
+                response = self._client_for(workspace).post(
+                    "/roles/walker/initialize",
+                    data={
+                        "source_url": ["https://pda.104.com.tw/profile/share/demo"],
+                        "target_language": "zh",
+                    },
+                )
+
+            self.assertEqual(response.status_code, 200)
+            self.assertIn("URL 抓取階段失敗", response.text)
+            self.assertIn("Evidence 來源", response.text)
+            self.assertIn("104 銀行", response.text)
+            self.assertNotIn("尚未建立個人資訊", response.text)
+            self.assertNotIn("開始初始化", response.text)
+
+    def test_initialize_role_passes_selected_language(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            workspace = Path(tmpdir) / "workspace"
+            RoleService(workspace).create_role("Walker")
+            FakeResumeNormalizationService.calls = []
+
+            with patch(
+                "app.routes.roles.ResumeNormalizationService",
+                FakeResumeNormalizationService,
+            ):
+                response = self._client_for(workspace).post(
+                    "/roles/walker/initialize",
+                    data={
+                        "source_url": ["https://www.linkedin.com/in/walker"],
+                        "target_language": "en",
+                    },
+                )
+
+            self.assertEqual(response.status_code, 200)
+            sources = EvidenceRepository(workspace / "walker").list_sources().sources
+            self.assertEqual(
+                FakeResumeNormalizationService.calls,
+                [(tuple(source.id for source in sources), "en")],
+            )
 
     def test_update_profile_writes_to_role_evidence(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -218,13 +312,19 @@ class RoleRouteTest(unittest.TestCase):
             self.assertEqual(response.status_code, 200)
             self.assertIn("Multi-source registry", response.text)
             self.assertIn("panel-editor evidence-source-editor", response.text)
-            self.assertIn('<summary class="material-symbols-outlined edit-icon">edit</summary>', response.text)
+            self.assertIn(
+                '<summary class="material-symbols-outlined edit-icon">edit</summary>', response.text
+            )
             self.assertIn("evidence-source-edit-form", response.text)
             self.assertIn('action="/roles/walker/sources"', response.text)
             self.assertIn('name="source_url"', response.text)
             self.assertIn('action="/roles/walker/sources/normalize"', response.text)
             self.assertIn("解析資料", response.text)
             self.assertIn('data-loading-label="解析中"', response.text)
+            self.assertIn("data-language-popup", response.text)
+            self.assertIn('name="target_language"', response.text)
+            self.assertIn('data-language-choice="zh"', response.text)
+            self.assertIn('data-language-choice="en"', response.text)
             self.assertIn("resume.txt", response.text)
             self.assertNotIn("src_empty_url", response.text)
             self.assertNotIn("詳細資料", response.text)
@@ -246,7 +346,7 @@ class RoleRouteTest(unittest.TestCase):
                         "",
                         "",
                         "https://www.yourator.co/users/walker",
-                    ]
+                    ],
                 },
             )
 
@@ -285,7 +385,7 @@ class RoleRouteTest(unittest.TestCase):
                         "",
                         "",
                         "",
-                    ]
+                    ],
                 },
             )
 
@@ -329,9 +429,41 @@ class RoleRouteTest(unittest.TestCase):
                 response = self._client_for(workspace).post("/roles/walker/sources/normalize")
 
             self.assertEqual(response.status_code, 200)
-            self.assertEqual(FakeResumeNormalizationService.calls, [("src_1", "src_2")])
+            self.assertEqual(FakeResumeNormalizationService.calls, [(("src_1", "src_2"), "zh")])
             self.assertIn("已整合 2 筆 Evidence 來源。", response.text)
             self.assertEqual(RoleService(workspace).load_profile("walker").name, "Walker Lin")
+
+    def test_normalize_all_sources_passes_selected_language(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            workspace = Path(tmpdir) / "workspace"
+            RoleService(workspace).create_role("Walker")
+            role_path = workspace / "walker"
+            EvidenceRepository(role_path).add_source(
+                EvidenceSource(
+                    id="src_1",
+                    label="resume.txt",
+                    path="evidence/files/src_1.txt",
+                    originalFilename="resume.txt",
+                    contentType="text/plain",
+                    sizeBytes=12,
+                    contentHash="src_1",
+                    extractionStatus="completed",
+                    createdAt=datetime(2026, 7, 1, tzinfo=timezone.utc),
+                )
+            )
+            FakeResumeNormalizationService.calls = []
+
+            with patch(
+                "app.routes.roles.ResumeNormalizationService",
+                FakeResumeNormalizationService,
+            ):
+                response = self._client_for(workspace).post(
+                    "/roles/walker/sources/normalize",
+                    data={"target_language": "en"},
+                )
+
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(FakeResumeNormalizationService.calls, [(("src_1",), "en")])
 
     def test_update_resume_profile_writes_resume_json(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -566,12 +698,15 @@ class RoleRouteTest(unittest.TestCase):
             jobs_path = workspace / "walker/jobs/jobs.json"
             job_id = json.loads(jobs_path.read_text(encoding="utf-8"))["jobs"][0]["id"]
 
-            with patch(
-                "app.routes.roles.OpenAITailoredResumeGenerator",
-                FakeTailoredResumeGenerator,
-            ), patch(
-                "app.services.job_service._fetch_job_page_text",
-                return_value="Senior frontend role for a jobs platform using Angular.",
+            with (
+                patch(
+                    "app.routes.roles.OpenAITailoredResumeGenerator",
+                    FakeTailoredResumeGenerator,
+                ),
+                patch(
+                    "app.services.job_service._fetch_job_page_text",
+                    return_value="Senior frontend role for a jobs platform using Angular.",
+                ),
             ):
                 response = client.post(
                     f"/roles/walker/jobs/{job_id}/generate",
@@ -625,12 +760,15 @@ class RoleRouteTest(unittest.TestCase):
             jobs_path = workspace / "walker/jobs/jobs.json"
             job_id = json.loads(jobs_path.read_text(encoding="utf-8"))["jobs"][0]["id"]
 
-            with patch(
-                "app.routes.roles.OpenAICoverLetterGenerator",
-                FakeCoverLetterGenerator,
-            ), patch(
-                "app.services.job_service._fetch_job_page_text",
-                return_value="Senior frontend role for a jobs platform using Angular.",
+            with (
+                patch(
+                    "app.routes.roles.OpenAICoverLetterGenerator",
+                    FakeCoverLetterGenerator,
+                ),
+                patch(
+                    "app.services.job_service._fetch_job_page_text",
+                    return_value="Senior frontend role for a jobs platform using Angular.",
+                ),
             ):
                 response = client.post(
                     f"/roles/walker/jobs/{job_id}/generate",

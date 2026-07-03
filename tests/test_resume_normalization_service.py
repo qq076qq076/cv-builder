@@ -89,6 +89,28 @@ class TimeoutFileParser:
         raise TimeoutError("The read operation timed out")
 
 
+class LanguageAwareFileParser:
+    target_language: str | None = None
+
+    def parse_file(
+        self,
+        *,
+        filename: str,
+        content_type: str | None,
+        content: bytes,
+        extracted_text: str | None = None,
+        source_id: str,
+        target_language: str | None = None,
+    ) -> NormalizedResume:
+        self.target_language = target_language
+        return NormalizedResume(
+            sourceIds=[source_id],
+            name="Walker Lin",
+            skills=["Python"],
+            summary=target_language or "",
+        )
+
+
 class ResumeNormalizationServiceTest(unittest.TestCase):
     def test_normalize_source_saves_resume_json(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -108,6 +130,21 @@ class ResumeNormalizationServiceTest(unittest.TestCase):
             self.assertEqual(loaded.skills, ["Python", "FastAPI"])
             self.assertIn("resume.txt:text/plain", loaded.summary)
             self.assertEqual(parser.extracted_text, "Senior Python Engineer")
+
+    def test_normalize_source_passes_target_language_to_parser(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            role_path = self._role_with_source_file(Path(tmpdir))
+            parser = LanguageAwareFileParser()
+
+            result = ResumeNormalizationService(
+                role_path=role_path,
+                api_key=None,
+                model="test-model",
+                parser=parser,
+            ).normalize_source("src_1", target_language="en")
+
+            self.assertEqual(result.status, "completed")
+            self.assertEqual(parser.target_language, "en")
 
     def test_sparse_ai_result_fails_without_writing_resume(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
