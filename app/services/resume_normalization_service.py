@@ -18,6 +18,7 @@ class ResumeNormalizationResult:
     status: str
     resume: NormalizedResume | None = None
     message: str = ""
+    error_stage: str = ""
 
 
 class ResumeNormalizationService:
@@ -52,14 +53,32 @@ class ResumeNormalizationService:
                 message="缺少 OPENAI_API_KEY 或 GEMINI_API_KEY",
             )
 
-        source = self._refresh_url_source(source)
+        source, fetch_result = self._refresh_url_source(source)
+        if fetch_result is not None and fetch_result.status != "completed":
+            return ResumeNormalizationResult(
+                status="fetch_failed",
+                message=_url_fetch_failure_message(fetch_result),
+                error_stage="url_fetch",
+            )
         source_path = self.role_path / source.path
         if not source_path.is_file():
-            return ResumeNormalizationResult(status="no_text", message="找不到來源檔案")
+            return ResumeNormalizationResult(
+                status="no_text",
+                message="來源檔案階段失敗：找不到來源檔案",
+                error_stage="source_file",
+            )
 
         parser = self.parser or self._build_parser()
         try:
             content = source_path.read_bytes()
+        except OSError as exc:
+            return ResumeNormalizationResult(
+                status="failed",
+                message=f"來源檔案讀取階段失敗：{exc}",
+                error_stage="source_file",
+            )
+
+        try:
             extracted_text = _extract_supplemental_text(
                 filename=source.original_filename,
                 content_type=source.content_type,
@@ -77,7 +96,8 @@ class ResumeNormalizationService:
         except Exception as exc:
             return ResumeNormalizationResult(
                 status="failed",
-                message=f"履歷解析失敗：{exc}",
+                message=_ai_parse_failure_message(exc),
+                error_stage="ai_parse",
             )
 
         saved_resume = self.resume_repository.save(resume)
@@ -99,13 +119,22 @@ class ResumeNormalizationService:
             )
 
         source_sections = []
+        fetch_failures = []
         for source in sources:
-            source = self._refresh_url_source(source)
+            source, fetch_result = self._refresh_url_source(source)
+            if fetch_result is not None and fetch_result.status != "completed":
+                fetch_failures.append(_url_fetch_failure_message(fetch_result))
+                continue
+
             source_path = self.role_path / source.path
             if not source_path.is_file():
                 continue
 
-            content = source_path.read_bytes()
+            try:
+                content = source_path.read_bytes()
+            except OSError:
+                continue
+
             extracted_text = _extract_supplemental_text(
                 filename=source.original_filename,
                 content_type=source.content_type,
@@ -128,13 +157,22 @@ class ResumeNormalizationService:
             )
 
         if not source_sections:
-            return ResumeNormalizationResult(status="no_text", message="找不到來源檔案")
+            if fetch_failures:
+                return ResumeNormalizationResult(
+                    status="fetch_failed",
+                    message="；".join(fetch_failures),
+                    error_stage="url_fetch",
+                )
+            return ResumeNormalizationResult(
+                status="no_text",
+                message="來源檔案階段失敗：找不到可解析的來源檔案",
+                error_stage="source_file",
+            )
 
         combined_source_id = ",".join(source.id for source in sources)
         combined_text = (
             "請整合以下多個來源，去除重複資訊，保留所有可驗證事實，"
-            "輸出一份一致的結構化履歷資料。\n\n"
-            + "\n\n---\n\n".join(source_sections)
+            "輸出一份一致的結構化履歷資料。\n\n" + "\n\n---\n\n".join(source_sections)
         )
 
         parser = self.parser or self._build_parser()
@@ -145,7 +183,8 @@ class ResumeNormalizationService:
         except Exception as exc:
             return ResumeNormalizationResult(
                 status="failed",
-                message=f"履歷解析失敗：{exc}",
+                message=_ai_parse_failure_message(exc),
+                error_stage="ai_parse",
             )
 
         saved_resume = self.resume_repository.save(resume)
@@ -154,7 +193,7 @@ class ResumeNormalizationService:
 
     def _refresh_url_source(self, source):
         if source.type != "url" or not source.source_url:
-            return source
+            return source, None
 
         result = self.url_fetcher(source.source_url)
         if not isinstance(result, UrlFetchResult):
@@ -176,7 +215,7 @@ class ResumeNormalizationService:
             }
         )
         self.evidence_repository.update_source(updated_source)
-        return updated_source
+        return updated_source, result
 
     def _build_parser(self) -> ResumeParser:
         if self.api_key:
@@ -261,3 +300,20 @@ def _validate_resume_detail(resume: NormalizedResume) -> None:
             "AI result is too sparse; expected identity plus skills, experience, "
             "projects, education, contact, summary, certificates, or languages"
         )
+
+
+def _url_fetch_failure_message(result: UrlFetchResult) -> str:
+    detail = result.message or "未取得頁面內容"
+    return f"URL 抓取階段失敗：{result.url}：{detail}"
+
+
+def _ai_parse_failure_message(exc: Exception) -> str:
+    detail = str(exc) or exc.__class__.__name__
+    if _looks_like_timeout(exc):
+        return f"AI 解析階段逾時：{detail}"
+    return f"AI 解析階段失敗：{detail}"
+
+
+def _looks_like_timeout(exc: Exception) -> bool:
+    text = f"{exc.__class__.__name__}: {exc}".lower()
+    return "timeout" in text or "timed out" in text or "逾時" in text

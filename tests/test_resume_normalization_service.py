@@ -76,6 +76,19 @@ class SparseFileParser:
         return NormalizedResume(sourceIds=[source_id], title="Senior Frontend Engineer")
 
 
+class TimeoutFileParser:
+    def parse_file(
+        self,
+        *,
+        filename: str,
+        content_type: str | None,
+        content: bytes,
+        extracted_text: str | None = None,
+        source_id: str,
+    ) -> NormalizedResume:
+        raise TimeoutError("The read operation timed out")
+
+
 class ResumeNormalizationServiceTest(unittest.TestCase):
     def test_normalize_source_saves_resume_json(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -109,7 +122,24 @@ class ResumeNormalizationServiceTest(unittest.TestCase):
 
             self.assertEqual(result.status, "failed")
             self.assertIn("too sparse", result.message)
+            self.assertEqual(result.error_stage, "ai_parse")
             self.assertFalse((role_path / "evidence/resume.json").exists())
+
+    def test_ai_timeout_is_labeled_as_ai_parse_stage(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            role_path = self._role_with_source_file(Path(tmpdir))
+
+            result = ResumeNormalizationService(
+                role_path=role_path,
+                api_key=None,
+                model="test-model",
+                parser=TimeoutFileParser(),
+            ).normalize_source("src_1")
+
+            self.assertEqual(result.status, "failed")
+            self.assertEqual(result.error_stage, "ai_parse")
+            self.assertIn("AI 解析階段逾時", result.message)
+            self.assertIn("The read operation timed out", result.message)
 
     def test_missing_api_key_returns_error_without_parser(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -169,7 +199,9 @@ class ResumeNormalizationServiceTest(unittest.TestCase):
             role_path = Path(tmpdir) / "workspace/walker"
             url_source_path = role_path / "evidence/files/src_url_profile.txt"
             url_source_path.parent.mkdir(parents=True)
-            url_source_path.write_text("Source URL: https://example.com/profile\n", encoding="utf-8")
+            url_source_path.write_text(
+                "Source URL: https://example.com/profile\n", encoding="utf-8"
+            )
             EvidenceRepository(role_path).add_source(
                 EvidenceSource(
                     id="src_url",
@@ -209,6 +241,30 @@ class ResumeNormalizationServiceTest(unittest.TestCase):
             self.assertEqual(updated_source.extraction_status, "completed")
             self.assertIsNotNone(updated_source.content_hash)
 
+    def test_normalize_url_source_reports_url_fetch_stage_failure(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            role_path = self._role_with_url_source(Path(tmpdir))
+
+            result = ResumeNormalizationService(
+                role_path=role_path,
+                api_key=None,
+                model="test-model",
+                parser=FakeParser(),
+                url_fetcher=lambda url: UrlFetchResult(
+                    url=url,
+                    status="failed",
+                    message="Playwright 抓取逾時",
+                ),
+            ).normalize_source("src_url")
+
+            self.assertEqual(result.status, "fetch_failed")
+            self.assertEqual(result.error_stage, "url_fetch")
+            self.assertIn("URL 抓取階段失敗", result.message)
+            self.assertIn("Playwright 抓取逾時", result.message)
+
+            updated_source = EvidenceRepository(role_path).get_source("src_url")
+            self.assertEqual(updated_source.extraction_status, "failed")
+
     def _role_with_source_file(
         self,
         root: Path,
@@ -226,6 +282,29 @@ class ResumeNormalizationServiceTest(unittest.TestCase):
                 originalFilename="resume.txt",
                 contentType="text/plain",
                 sizeBytes=22,
+                extractionStatus="not_required",
+                createdAt=datetime(2026, 7, 1, tzinfo=timezone.utc),
+            )
+        )
+        return role_path
+
+    def _role_with_url_source(self, root: Path) -> Path:
+        role_path = root / "workspace/walker"
+        url_source_path = role_path / "evidence/files/src_url_profile.txt"
+        url_source_path.parent.mkdir(parents=True)
+        url_source_path.write_text(
+            "Source URL: https://pda.104.com.tw/profile/share/demo\n", encoding="utf-8"
+        )
+        EvidenceRepository(role_path).add_source(
+            EvidenceSource(
+                id="src_url",
+                type="url",
+                label="104 銀行",
+                path="evidence/files/src_url_profile.txt",
+                originalFilename="profile.txt",
+                contentType="text/plain",
+                sourceUrl="https://pda.104.com.tw/profile/share/demo",
+                sizeBytes=55,
                 extractionStatus="not_required",
                 createdAt=datetime(2026, 7, 1, tzinfo=timezone.utc),
             )

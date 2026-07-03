@@ -3,6 +3,7 @@ from __future__ import annotations
 from concurrent.futures import ThreadPoolExecutor
 from concurrent.futures import TimeoutError as FutureTimeoutError
 import re
+import socket
 from dataclasses import dataclass
 from html.parser import HTMLParser
 from urllib import request
@@ -115,11 +116,20 @@ def fetch_url_text(url: str, *, timeout: float = 10.0) -> UrlFetchResult:
             status="failed",
             message=f"HTTP {exc.code}",
         )
-    except (OSError, URLError) as exc:
+    except socket.timeout as exc:
         return UrlFetchResult(
             url=normalized_url,
             status="failed",
-            message=str(exc.reason if isinstance(exc, URLError) else exc),
+            message=f"一般 HTTP 抓取逾時：{exc}",
+        )
+    except (OSError, URLError) as exc:
+        detail = str(exc.reason if isinstance(exc, URLError) else exc)
+        if _looks_like_timeout_message(detail):
+            detail = f"一般 HTTP 抓取逾時：{detail}"
+        return UrlFetchResult(
+            url=normalized_url,
+            status="failed",
+            message=detail,
         )
 
     charset = _charset_from_content_type(content_type)
@@ -258,6 +268,11 @@ def _normalize_text(value: str) -> str:
     collapsed = re.sub(r"[ \t\r\f\v]+", " ", value)
     collapsed = re.sub(r"\n\s*\n+", "\n\n", collapsed)
     return "\n".join(line.strip() for line in collapsed.splitlines() if line.strip())
+
+
+def _looks_like_timeout_message(value: str) -> bool:
+    normalized = value.lower()
+    return "timeout" in normalized or "timed out" in normalized or "逾時" in normalized
 
 
 def _should_render_with_playwright(parsed) -> bool:
