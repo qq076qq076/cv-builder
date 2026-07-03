@@ -11,6 +11,7 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import urlparse
 
 from app.ai.cover_letter_generator import CoverLetterGenerator
+from app.ai.tailored_resume_generator import TailoredResumeGenerator
 from app.schemas.job import TrackedJob
 from app.schemas.resume import NormalizedResume
 from app.storage.jobs import JobRepository
@@ -51,6 +52,7 @@ class JobService:
         kind: str,
         resume: NormalizedResume,
         cover_letter_generator: CoverLetterGenerator | None = None,
+        tailored_resume_generator: TailoredResumeGenerator | None = None,
     ) -> GeneratedJobOutput | None:
         job = self.repository.get_job(job_id)
         if job is None:
@@ -65,6 +67,7 @@ class JobService:
             kind=kind,
             resume=resume,
             cover_letter_generator=cover_letter_generator,
+            tailored_resume_generator=tailored_resume_generator,
         )
         output_path.write_text(
             content,
@@ -132,9 +135,16 @@ def _build_generated_markdown(
     kind: str,
     resume: NormalizedResume,
     cover_letter_generator: CoverLetterGenerator | None = None,
+    tailored_resume_generator: TailoredResumeGenerator | None = None,
 ) -> str:
     if kind == "resume":
-        return _build_resume_markdown(job=job, resume=resume)
+        if tailored_resume_generator is None:
+            raise RuntimeError("缺少 OPENAI_API_KEY 或 GEMINI_API_KEY，無法生成專用履歷")
+        return tailored_resume_generator.generate(
+            resume=resume,
+            job=job,
+            job_page_text=_fetch_job_page_text(job.url),
+        )
 
     if cover_letter_generator is None:
         raise RuntimeError("缺少 OPENAI_API_KEY 或 GEMINI_API_KEY，無法生成推薦信")
@@ -143,20 +153,6 @@ def _build_generated_markdown(
         resume=resume,
         job=job,
         job_page_text=_fetch_job_page_text(job.url),
-    )
-
-
-def _build_resume_markdown(*, job: TrackedJob, resume: NormalizedResume) -> str:
-    title = "專用履歷草稿"
-    skills = ", ".join(resume.skills[:12]) if resume.skills else "尚未解析技能"
-    summary = resume.summary or "尚未解析摘要"
-    return (
-        f"# {title}\n\n"
-        f"- 目標職缺：{job.title}\n"
-        f"- 公司：{job.company}\n"
-        f"- URL：{job.url}\n\n"
-        f"## 候選人摘要\n\n{summary}\n\n"
-        f"## 關鍵技能\n\n{skills}\n"
     )
 
 

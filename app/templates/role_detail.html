@@ -622,7 +622,7 @@
         {% endif %}
         {% if generated_error %}
           <div class="app-notice app-notice-muted">
-            推薦信生成失敗：{{ generated_error }}
+            生成失敗：{{ generated_error }}
           </div>
         {% endif %}
         <form class="job-create-form" method="post" action="/roles/{{ role.id }}/jobs">
@@ -673,7 +673,7 @@
               <div>
                 <p class="app-kicker">Generated Output</p>
                 <h2 id="generated-output-title">
-                  {% if active_generated_output.kind == "cover-letter" %}推薦信草稿{% else %}生成內容{% endif %}
+                  {% if active_generated_output.kind == "cover-letter" %}推薦信草稿{% else %}專用履歷草稿{% endif %}
                 </h2>
               </div>
               <a class="app-modal-close" href="/roles/{{ role.id }}#jobs" aria-label="關閉 popup">

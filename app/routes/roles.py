@@ -12,6 +12,11 @@ from app.ai.cover_letter_generator import (
     GeminiCoverLetterGenerator,
     OpenAICoverLetterGenerator,
 )
+from app.ai.tailored_resume_generator import (
+    GeminiTailoredResumeGenerator,
+    OpenAITailoredResumeGenerator,
+    TailoredResumeGenerator,
+)
 from app.config import get_settings
 from app.schemas.role import RoleProfile
 from app.schemas.resume import (
@@ -454,6 +459,11 @@ def generate_role_job_output(
                     settings=settings,
                     kind=kind,
                 ),
+                tailored_resume_generator=_build_tailored_resume_generator(
+                    role_path=role_path,
+                    settings=settings,
+                    kind=kind,
+                ),
             )
         except RuntimeError as exc:
             return RedirectResponse(
@@ -610,6 +620,29 @@ def _build_cover_letter_generator(
             log_path=role_path / "logs/ai-cover-letter.jsonl",
         )
     raise RuntimeError("缺少 OPENAI_API_KEY 或 GEMINI_API_KEY，無法生成推薦信")
+
+
+def _build_tailored_resume_generator(
+    *,
+    role_path,
+    settings,
+    kind: str,
+) -> TailoredResumeGenerator | None:
+    if kind != "resume":
+        return None
+    if settings.openai_api_key:
+        return OpenAITailoredResumeGenerator(
+            api_key=settings.openai_api_key,
+            model=settings.openai_model,
+            log_path=role_path / "logs/ai-tailored-resume.jsonl",
+        )
+    if settings.gemini_api_key:
+        return GeminiTailoredResumeGenerator(
+            api_key=settings.gemini_api_key,
+            model=settings.gemini_model,
+            log_path=role_path / "logs/ai-tailored-resume.jsonl",
+        )
+    raise RuntimeError("缺少 OPENAI_API_KEY 或 GEMINI_API_KEY，無法生成專用履歷")
 
 
 def _has_profile_content(profile: RoleProfile) -> bool:

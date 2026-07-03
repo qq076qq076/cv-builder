@@ -30,6 +30,19 @@ class FakeCoverLetterGenerator:
         return f"我是 {resume.name}，針對 {job.url} 申請此職缺。"
 
 
+class FakeTailoredResumeGenerator:
+    calls = []
+
+    def __init__(self, *, api_key: str, model: str, log_path: Path | None = None) -> None:
+        self.api_key = api_key
+        self.model = model
+        self.log_path = log_path
+
+    def generate(self, *, resume, job, job_page_text: str = "") -> str:
+        self.calls.append((self.api_key, self.model, resume.name, job.url, job_page_text))
+        return f"# {resume.name}\n\n針對 {job.url} 的專用履歷。"
+
+
 class FakeResumeNormalizationService:
     calls = []
 
@@ -540,18 +553,31 @@ class RoleRouteTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmpdir:
             workspace = Path(tmpdir) / "workspace"
             RoleService(workspace).create_role("Walker")
-            self._client_for(workspace).post(
+            FakeTailoredResumeGenerator.calls = []
+            client = self._client_for(workspace, openai_api_key="openai-key")
+            client.post(
+                "/roles/walker/resume/profile",
+                data={"name": "Walker Lin", "summary": "Frontend engineer"},
+            )
+            client.post(
                 "/roles/walker/jobs",
                 data={"job_url": "https://jobs.example.com/senior-frontend"},
             )
             jobs_path = workspace / "walker/jobs/jobs.json"
             job_id = json.loads(jobs_path.read_text(encoding="utf-8"))["jobs"][0]["id"]
 
-            response = self._client_for(workspace).post(
-                f"/roles/walker/jobs/{job_id}/generate",
-                data={"kind": "resume"},
-                follow_redirects=False,
-            )
+            with patch(
+                "app.routes.roles.OpenAITailoredResumeGenerator",
+                FakeTailoredResumeGenerator,
+            ), patch(
+                "app.services.job_service._fetch_job_page_text",
+                return_value="Senior frontend role for a jobs platform using Angular.",
+            ):
+                response = client.post(
+                    f"/roles/walker/jobs/{job_id}/generate",
+                    data={"kind": "resume"},
+                    follow_redirects=False,
+                )
 
             self.assertEqual(response.status_code, 303)
             self.assertEqual(
@@ -559,6 +585,18 @@ class RoleRouteTest(unittest.TestCase):
                 f"/roles/walker?generated_output=outputs/{job_id}-resume.md#jobs",
             )
             self.assertTrue((workspace / f"walker/outputs/{job_id}-resume.md").is_file())
+            self.assertEqual(
+                FakeTailoredResumeGenerator.calls,
+                [
+                    (
+                        "openai-key",
+                        "gpt-4.1-mini",
+                        "Walker Lin",
+                        "https://jobs.example.com/senior-frontend",
+                        "Senior frontend role for a jobs platform using Angular.",
+                    )
+                ],
+            )
 
     def test_generate_cover_letter_shows_popup_and_existing_button(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -641,7 +679,33 @@ class RoleRouteTest(unittest.TestCase):
             )
 
             self.assertEqual(response.status_code, 200)
-            self.assertIn("推薦信生成失敗", response.text)
+            self.assertIn("生成失敗", response.text)
+            self.assertIn("缺少 OPENAI_API_KEY 或 GEMINI_API_KEY", response.text)
+
+    def test_generate_tailored_resume_without_api_key_shows_error(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            workspace = Path(tmpdir) / "workspace"
+            RoleService(workspace).create_role("Walker")
+            client = self._client_for(workspace, openai_api_key="")
+            client.post(
+                "/roles/walker/resume/profile",
+                data={"name": "Walker Lin", "summary": "Frontend engineer"},
+            )
+            client.post(
+                "/roles/walker/jobs",
+                data={"job_url": "https://jobs.example.com/senior-frontend"},
+            )
+            jobs_path = workspace / "walker/jobs/jobs.json"
+            job_id = json.loads(jobs_path.read_text(encoding="utf-8"))["jobs"][0]["id"]
+
+            response = client.post(
+                f"/roles/walker/jobs/{job_id}/generate",
+                data={"kind": "resume"},
+                follow_redirects=True,
+            )
+
+            self.assertEqual(response.status_code, 200)
+            self.assertIn("生成失敗", response.text)
             self.assertIn("缺少 OPENAI_API_KEY 或 GEMINI_API_KEY", response.text)
 
     def test_normalize_source_without_api_key_shows_message(self) -> None:
