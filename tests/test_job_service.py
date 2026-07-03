@@ -6,7 +6,8 @@ from unittest.mock import patch
 from app.schemas.resume import NormalizedResume
 from app.ai.cover_letter_generator import build_cover_letter_prompt
 from app.ai.tailored_resume_generator import build_tailored_resume_prompt
-from app.services.job_service import JobService
+from app.services.job_service import JobService, _fetch_job_page_text
+from app.services.url_fetcher import UrlFetchResult
 
 
 class FakeCoverLetterGenerator:
@@ -174,6 +175,33 @@ class JobServiceTest(unittest.TestCase):
             self.assertIn("不得新增不存在的公司", prompt)
             self.assertIn("Company builds retail SaaS", prompt)
             self.assertIn("Angular", prompt)
+
+    def test_fetch_job_page_text_uses_shared_url_fetcher(self) -> None:
+        with patch(
+            "app.services.job_service.fetch_url_text",
+            return_value=UrlFetchResult(
+                url="https://jobs.example.com/frontend",
+                status="completed",
+                text="Senior\n\nFrontend\tEngineer using Angular",
+            ),
+        ) as fetcher:
+            text = _fetch_job_page_text("https://jobs.example.com/frontend")
+
+        self.assertEqual(text, "Senior Frontend Engineer using Angular")
+        fetcher.assert_called_once_with("https://jobs.example.com/frontend", timeout=10)
+
+    def test_fetch_job_page_text_returns_empty_when_fetch_fails(self) -> None:
+        with patch(
+            "app.services.job_service.fetch_url_text",
+            return_value=UrlFetchResult(
+                url="https://jobs.example.com/frontend",
+                status="failed",
+                message="timeout",
+            ),
+        ):
+            text = _fetch_job_page_text("https://jobs.example.com/frontend")
+
+        self.assertEqual(text, "")
 
 
 if __name__ == "__main__":

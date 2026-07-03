@@ -157,6 +157,24 @@ class UrlFetcherTest(unittest.TestCase):
         )
         urlopen.assert_not_called()
 
+    def test_fetch_104_job_url_uses_playwright_rendered_text(self) -> None:
+        browser = FakeBrowser()
+
+        with patch(
+            "app.services.url_fetcher.sync_playwright",
+            return_value=FakePlaywrightContext(browser),
+        ):
+            with patch("app.services.url_fetcher.request.urlopen") as urlopen:
+                result = fetch_url_text("https://www.104.com.tw/job/8abcd")
+
+        self.assertEqual(result.status, "completed")
+        self.assertIn("Walker Lin", result.text)
+        self.assertEqual(
+            browser.page.goto_calls,
+            [("https://www.104.com.tw/job/8abcd", "domcontentloaded", 20000)],
+        )
+        urlopen.assert_not_called()
+
     def test_fetch_yourator_url_uses_playwright_rendered_text(self) -> None:
         browser = FakeBrowser()
 
@@ -190,6 +208,24 @@ class UrlFetcherTest(unittest.TestCase):
         self.assertEqual(
             browser.page.goto_calls,
             [("https://www.linkedin.com/in/walker-lin", "domcontentloaded", 20000)],
+        )
+        urlopen.assert_not_called()
+
+    def test_fetch_linkedin_job_url_uses_playwright_rendered_text(self) -> None:
+        browser = FakeBrowser()
+
+        with patch(
+            "app.services.url_fetcher.sync_playwright",
+            return_value=FakePlaywrightContext(browser),
+        ):
+            with patch("app.services.url_fetcher.request.urlopen") as urlopen:
+                result = fetch_url_text("https://www.linkedin.com/jobs/view/123")
+
+        self.assertEqual(result.status, "completed")
+        self.assertIn("Walker Lin", result.text)
+        self.assertEqual(
+            browser.page.goto_calls,
+            [("https://www.linkedin.com/jobs/view/123", "domcontentloaded", 20000)],
         )
         urlopen.assert_not_called()
 

@@ -266,7 +266,9 @@ def _should_render_with_playwright(parsed) -> bool:
     if "cake.me" in host or "cakeresume.com" in host:
         return True
     if "linkedin.com" in host or "linkdin.com" in host:
-        return "/in/" in path
+        return "/in/" in path or "/jobs/" in path
     if "yourator.co" in host:
         return True
-    return "104.com.tw" in host and "/profile/" in path
+    if "104.com.tw" in host:
+        return "/profile/" in path or "/job/" in path or "jobbank" in host
+    return False

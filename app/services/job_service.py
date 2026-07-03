@@ -3,11 +3,8 @@ from __future__ import annotations
 import re
 import uuid
 from dataclasses import dataclass
-from html.parser import HTMLParser
 from datetime import datetime, timezone
 from pathlib import Path
-from urllib import request
-from urllib.error import HTTPError, URLError
 from urllib.parse import urlparse
 
 from app.ai.cover_letter_generator import CoverLetterGenerator
@@ -15,6 +12,7 @@ from app.ai.tailored_resume_generator import TailoredResumeGenerator
 from app.schemas.job import TrackedJob
 from app.schemas.resume import NormalizedResume
 from app.storage.jobs import JobRepository
+from app.services.url_fetcher import fetch_url_text
 
 
 @dataclass(frozen=True)
@@ -157,69 +155,7 @@ def _build_generated_markdown(
 
 
 def _fetch_job_page_text(url: str) -> str:
-    parsed = urlparse(url)
-    if parsed.scheme not in {"http", "https"}:
+    result = fetch_url_text(url, timeout=10)
+    if result.status != "completed":
         return ""
-
-    req = request.Request(
-        url,
-        headers={
-            "User-Agent": "cv-builder/1.0 (+local resume assistant)",
-            "Accept": "text/html,application/xhtml+xml,text/plain;q=0.9,*/*;q=0.1",
-        },
-        method="GET",
-    )
-    try:
-        with request.urlopen(req, timeout=10) as response:
-            content_type = response.headers.get("content-type", "")
-            raw_content = response.read(400_000)
-    except (HTTPError, URLError, TimeoutError, ValueError):
-        return ""
-
-    if "text" not in content_type and "html" not in content_type:
-        return ""
-
-    charset = "utf-8"
-    match = re.search(r"charset=([^;\s]+)", content_type, flags=re.IGNORECASE)
-    if match:
-        charset = match.group(1).strip("\"'")
-    text = raw_content.decode(charset, errors="replace")
-    if "html" in content_type:
-        text = _html_to_text(text)
-
-    text = re.sub(r"\s+", " ", text).strip()
-    return text[:8000]
-
-
-def _html_to_text(html: str) -> str:
-    parser = _JobPageTextParser()
-    parser.feed(html)
-    return parser.text()
-
-
-class _JobPageTextParser(HTMLParser):
-    def __init__(self) -> None:
-        super().__init__()
-        self._ignored_depth = 0
-        self._parts: list[str] = []
-
-    def handle_starttag(self, tag: str, attrs) -> None:
-        if tag in {"script", "style", "noscript", "svg"}:
-            self._ignored_depth += 1
-        if tag in {"p", "br", "li", "div", "section", "article", "h1", "h2", "h3"}:
-            self._parts.append(" ")
-
-    def handle_endtag(self, tag: str) -> None:
-        if tag in {"script", "style", "noscript", "svg"} and self._ignored_depth:
-            self._ignored_depth -= 1
-        if tag in {"p", "li", "div", "section", "article", "h1", "h2", "h3"}:
-            self._parts.append(" ")
-
-    def handle_data(self, data: str) -> None:
-        if self._ignored_depth:
-            return
-        if data.strip():
-            self._parts.append(data)
-
-    def text(self) -> str:
-        return " ".join(self._parts)
+    return re.sub(r"\s+", " ", result.text).strip()[:8000]
