@@ -75,17 +75,30 @@ python --version
 
 確認 Python 版本為 3.13.14 後，再安裝依賴。
 
-建議使用 `uv`：
+建議使用 `uv` 管理依賴。`uv` 不是 Python 內建指令，若出現 `zsh: command not found: uv`，請先安裝：
+
+```bash
+curl -LsSf https://astral.sh/uv/install.sh | sh
+```
+
+安裝後重新開啟 terminal，或依安裝訊息把 `uv` 加進 `PATH`，再確認：
+
+```bash
+uv --version
+```
+
+接著安裝專案依賴：
 
 ```bash
 uv sync
 ```
 
-如果不用 `uv`，也可以用 Python 內建 venv：
+如果不想安裝 `uv`，也可以只用 Python 內建 venv 與 pip：
 
 ```bash
 python -m venv .venv
 . .venv/bin/activate
+python -m pip install --upgrade pip
 pip install -e .
 ```
 
