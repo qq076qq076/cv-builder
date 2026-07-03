@@ -636,6 +636,7 @@
         <div class="job-list">
           {% for job in jobs %}
             {% set job_output = job_outputs.get(job.id, {}) %}
+            {% set resume_output = job_output.get("resume") %}
             {% set cover_letter_output = job_output.get("cover-letter") %}
             <article class="job-item">
               <div class="job-company-badge">{{ job.company[:1]|upper if job.company else "J" }}</div>
@@ -647,7 +648,9 @@
               <div class="job-actions">
                 <form method="post" action="/roles/{{ role.id }}/jobs/{{ job.id }}/generate">
                   <input name="kind" type="hidden" value="resume">
-                  <button class="app-button app-button-secondary" type="submit">生成專用履歷</button>
+                  <button class="app-button app-button-secondary" type="submit">
+                    {% if resume_output %}重新生成專用履歷{% else %}生成專用履歷{% endif %}
+                  </button>
                 </form>
                 <form method="post" action="/roles/{{ role.id }}/jobs/{{ job.id }}/generate">
                   <input name="kind" type="hidden" value="cover_letter">
@@ -655,6 +658,9 @@
                     {% if cover_letter_output %}重新生成推薦信{% else %}生成推薦信{% endif %}
                   </button>
                 </form>
+                {% if resume_output %}
+                  <a class="app-button app-button-secondary" href="/roles/{{ role.id }}?generated_output={{ resume_output.path }}#jobs">查看專用履歷</a>
+                {% endif %}
                 {% if cover_letter_output %}
                   <a class="app-button app-button-secondary" href="/roles/{{ role.id }}?generated_output={{ cover_letter_output.path }}#jobs">查看推薦信</a>
                 {% endif %}

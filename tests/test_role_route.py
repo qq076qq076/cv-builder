@@ -597,6 +597,12 @@ class RoleRouteTest(unittest.TestCase):
                     )
                 ],
             )
+            page = client.get(response.headers["location"])
+            self.assertEqual(page.status_code, 200)
+            self.assertIn("專用履歷草稿", page.text)
+            self.assertIn("查看專用履歷", page.text)
+            self.assertIn("重新生成專用履歷", page.text)
+            self.assertIn("針對 https://jobs.example.com/senior-frontend 的專用履歷", page.text)
 
     def test_generate_cover_letter_shows_popup_and_existing_button(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:

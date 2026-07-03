@@ -11,8 +11,8 @@ cv-builder 是一個本機優先的 AI 職涯資料與履歷輔助工具。它�
 - 登錄平台 profile URL，並在解析前抓取 URL 內容作為 evidence。
 - 使用 OpenAI 或 Gemini 將來源資料正規化成結構化履歷。
 - 在角色頁面手動編輯個人摘要、經歷、學歷、專案、技能、聯絡方式與語言能力。
-- 新增職缺 URL，產生專用履歷草稿或 cover letter。
-- LinkedIn、104、Cake、Yourator profile URL 透過 Playwright 抓取 JS render 後的內容。
+- 新增職缺 URL，根據職缺頁內容產生專用履歷草稿或 cover letter。
+- LinkedIn、104、Cake、Yourator 等 URL 透過 Playwright 抓取 JS render 後的內容。
 
 ## 技術架構
 
@@ -136,14 +136,15 @@ http://127.0.0.1:8000/health
 3. 點擊解析來源，系統會抓取來源內容並呼叫 OpenAI 或 Gemini 轉成結構化履歷。
 4. 在角色頁檢查並手動修正履歷內容。
 5. 新增職缺 URL。
-6. 產生專用履歷草稿或 cover letter。
+6. 點擊「生成專用履歷」或「生成推薦信」，系統會抓取職缺頁文字並交給 AI 產生客製化 Markdown 草稿。
+7. 生成後可在同一張職缺卡片點擊「查看專用履歷」或「查看推薦信」檢視輸出內容。
 
-## Profile URL 抓取注意事項
+## URL 抓取注意事項
 
-LinkedIn、104、Cake、Yourator 這類 profile URL 會使用 Playwright 開啟 Chromium，等待 JavaScript render 後再抓取頁面文字。若出現 timeout 或抓不到資料，優先檢查：
+LinkedIn、104、Cake、Yourator 這類 profile 或職缺 URL 會使用 Playwright 開啟 Chromium，等待 JavaScript render 後再抓取頁面文字。若出現 timeout 或抓不到資料，優先檢查：
 
 - 是否已執行 `python -m playwright install chromium`。
-- 該 profile 是否公開可讀，不需要登入或驗證。
+- 該頁面是否公開可讀，不需要登入或驗證。
 - 網站是否有防爬、cookie consent、地區限制或其他阻擋。
 - 重新解析來源，讓系統用最新抓取邏輯更新 evidence 檔。
 
