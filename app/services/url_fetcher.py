@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import TimeoutError as FutureTimeoutError
 import re
 from dataclasses import dataclass
 from html.parser import HTMLParser
@@ -7,10 +9,26 @@ from urllib import request
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlparse
 
+try:
+    from playwright.sync_api import Error as PlaywrightError
+    from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
+    from playwright.sync_api import sync_playwright
+except ImportError:  # pragma: no cover - dependency may be absent before install.
+    PlaywrightError = Exception
+    PlaywrightTimeoutError = TimeoutError
+    sync_playwright = None
+
 
 MAX_FETCHED_TEXT_CHARS = 120_000
+PLAYWRIGHT_TIMEOUT_MS = 20_000
+PLAYWRIGHT_WORKER_TIMEOUT_SECONDS = 35
 BLOCK_TAGS = {"p", "div", "section", "article", "br", "li", "tr", "h1", "h2", "h3"}
 IGNORED_TAGS = {"script", "style", "noscript", "svg", "canvas"}
+USER_AGENT = (
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+    "AppleWebKit/537.36 (KHTML, like Gecko) "
+    "Chrome/126.0 Safari/537.36"
+)
 
 
 @dataclass(frozen=True)
@@ -77,14 +95,13 @@ def fetch_url_text(url: str, *, timeout: float = 10.0) -> UrlFetchResult:
             message="只支援 http/https 網址",
         )
 
+    if _should_render_with_playwright(parsed):
+        return _fetch_url_text_with_playwright_in_thread(normalized_url, timeout=timeout)
+
     req = request.Request(
         normalized_url,
         headers={
-            "User-Agent": (
-                "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
-                "AppleWebKit/537.36 (KHTML, like Gecko) "
-                "Chrome/126.0 Safari/537.36"
-            ),
+            "User-Agent": USER_AGENT,
             "Accept": "text/html,application/xhtml+xml,text/plain;q=0.9,*/*;q=0.8",
         },
     )
@@ -131,6 +148,88 @@ def fetch_url_text(url: str, *, timeout: float = 10.0) -> UrlFetchResult:
     )
 
 
+def _fetch_url_text_with_playwright_in_thread(url: str, *, timeout: float) -> UrlFetchResult:
+    # Playwright sync API cannot run in a thread that already owns an asyncio event loop.
+    executor = ThreadPoolExecutor(max_workers=1)
+    should_wait_for_worker = True
+    try:
+        future = executor.submit(_fetch_url_text_with_playwright, url, timeout=timeout)
+        try:
+            return future.result(timeout=PLAYWRIGHT_WORKER_TIMEOUT_SECONDS)
+        except FutureTimeoutError:
+            should_wait_for_worker = False
+            executor.shutdown(wait=False, cancel_futures=True)
+            return UrlFetchResult(
+                url=url,
+                status="failed",
+                message="Playwright 抓取逾時",
+            )
+    finally:
+        if should_wait_for_worker:
+            executor.shutdown(wait=True)
+
+
+def _fetch_url_text_with_playwright(url: str, *, timeout: float) -> UrlFetchResult:
+    if sync_playwright is None:
+        return UrlFetchResult(
+            url=url,
+            status="failed",
+            message="缺少 playwright，請先安裝依賴並執行 playwright install chromium",
+        )
+
+    timeout_ms = max(PLAYWRIGHT_TIMEOUT_MS, int(timeout * 1000))
+    try:
+        with sync_playwright() as playwright:
+            browser = playwright.chromium.launch(headless=True)
+            try:
+                page = browser.new_page(
+                    user_agent=USER_AGENT,
+                    viewport={"width": 1440, "height": 1200},
+                )
+                page.goto(url, wait_until="domcontentloaded", timeout=timeout_ms)
+                try:
+                    page.wait_for_load_state("networkidle", timeout=5_000)
+                except PlaywrightTimeoutError:
+                    pass
+
+                title = _normalize_text(page.title())
+                text = _normalize_text(page.locator("body").inner_text(timeout=5_000))
+            finally:
+                browser.close()
+    except PlaywrightTimeoutError as exc:
+        return UrlFetchResult(
+            url=url,
+            status="failed",
+            message=f"Playwright 抓取逾時：{exc}",
+        )
+    except PlaywrightError as exc:
+        return UrlFetchResult(
+            url=url,
+            status="failed",
+            message=f"Playwright 抓取失敗：{exc}",
+        )
+    except Exception as exc:
+        return UrlFetchResult(
+            url=url,
+            status="failed",
+            message=f"Playwright 抓取失敗：{exc}",
+        )
+
+    if not text:
+        return UrlFetchResult(
+            url=url,
+            status="failed",
+            message="Playwright 未取得可解析文字",
+        )
+
+    return UrlFetchResult(
+        url=url,
+        status="completed",
+        title=title,
+        text=text[:MAX_FETCHED_TEXT_CHARS],
+    )
+
+
 def render_fetched_url_evidence(result: UrlFetchResult) -> str:
     lines = [
         f"Source URL: {result.url}",
@@ -140,7 +239,13 @@ def render_fetched_url_evidence(result: UrlFetchResult) -> str:
         lines.append(f"Page Title: {result.title}")
     if result.message:
         lines.append(f"Fetch Message: {result.message}")
-    lines.extend(["", "Fetched Content:", result.text or "[未取得頁面內容，僅保留網址作為來源線索]"])
+    lines.extend(
+        [
+            "",
+            "Fetched Content:",
+            result.text or "[未取得頁面內容，僅保留網址作為來源線索]",
+        ]
+    )
     return "\n".join(lines).strip() + "\n"
 
 
@@ -153,3 +258,15 @@ def _normalize_text(value: str) -> str:
     collapsed = re.sub(r"[ \t\r\f\v]+", " ", value)
     collapsed = re.sub(r"\n\s*\n+", "\n\n", collapsed)
     return "\n".join(line.strip() for line in collapsed.splitlines() if line.strip())
+
+
+def _should_render_with_playwright(parsed) -> bool:
+    host = parsed.netloc.lower()
+    path = parsed.path.lower()
+    if "cake.me" in host or "cakeresume.com" in host:
+        return True
+    if "linkedin.com" in host or "linkdin.com" in host:
+        return "/in/" in path
+    if "yourator.co" in host:
+        return True
+    return "104.com.tw" in host and "/profile/" in path

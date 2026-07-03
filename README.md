@@ -12,7 +12,7 @@ cv-builder 是一個本機優先的 AI 職涯資料與履歷輔助工具。它�
 - 使用 OpenAI 或 Gemini 將來源資料正規化成結構化履歷。
 - 在角色頁面手動編輯個人摘要、經歷、學歷、專案、技能、聯絡方式與語言能力。
 - 新增職缺 URL，產生專用履歷草稿或 cover letter。
-- LinkedIn profile URL 透過 Apify actor 抓取，避開一般 HTTP 直接讀取容易被阻擋的問題。
+- LinkedIn、104、Cake、Yourator profile URL 透過 Playwright 抓取 JS render 後的內容。
 
 ## 技術架構
 
@@ -22,7 +22,7 @@ cv-builder 是一個本機優先的 AI 職涯資料與履歷輔助工具。它�
 - Pydantic
 - file-based JSON storage
 - OpenAI / Gemini API
-- Apify API for LinkedIn profile crawling
+- Playwright for JavaScript-rendered profile pages
 
 ## 環境變數
 
@@ -42,26 +42,12 @@ OPENAI_MODEL=gpt-4.1-mini
 
 GEMINI_API_KEY=
 GEMINI_MODEL=gemini-3.5-flash
-
-APIFY_API_TOKEN=
-APIFY_LINKEDIN_ACTOR_ID=
 ```
 
 說明：
 
 - `CV_BUILDER_WORKSPACE`：本機資料儲存位置，預設可使用 `./workspace`。
 - `OPENAI_API_KEY` / `GEMINI_API_KEY`：任一存在即可啟用 AI 解析與生成；兩者都存在時程式優先使用 OpenAI。
-- `APIFY_API_TOKEN`：Apify API token。
-- `APIFY_LINKEDIN_ACTOR_ID`：用來抓 LinkedIn profile 的 Apify actor id，例如 `user~linkedin-profile-scraper`。
-- `APIFY_LINKEDIN_INPUT_JSON`：選填。若你的 Apify actor input 不是 `profileUrls`，可用這個變數覆蓋。
-
-例如：
-
-```env
-APIFY_LINKEDIN_INPUT_JSON={"urls":["{url}"],"proxy":{"useApifyProxy":true}}
-```
-
-`{url}` 會在執行時替換成使用者輸入的 LinkedIn profile URL。
 
 ## 安裝
 
@@ -91,6 +77,7 @@ uv --version
 
 ```bash
 uv sync
+uv run playwright install chromium
 ```
 
 如果不想安裝 `uv`，也可以只用 Python 內建 venv 與 pip：
@@ -100,6 +87,7 @@ python -m venv .venv
 . .venv/bin/activate
 python -m pip install --upgrade pip
 pip install -e .
+python -m playwright install chromium
 ```
 
 若要執行測試與 lint，還需要安裝 dev dependency：
@@ -150,22 +138,14 @@ http://127.0.0.1:8000/health
 5. 新增職缺 URL。
 6. 產生專用履歷草稿或 cover letter。
 
-## LinkedIn 與 Apify 注意事項
+## Profile URL 抓取注意事項
 
-LinkedIn URL 不再使用一般網頁請求直接抓取，而是呼叫 Apify actor。若出現 timeout 或抓不到資料，優先檢查：
+LinkedIn、104、Cake、Yourator 這類 profile URL 會使用 Playwright 開啟 Chromium，等待 JavaScript render 後再抓取頁面文字。若出現 timeout 或抓不到資料，優先檢查：
 
-- `APIFY_API_TOKEN` 是否有效。
-- `APIFY_LINKEDIN_ACTOR_ID` 是否正確。
-- `APIFY_LINKEDIN_INPUT_JSON` 是否符合該 actor 的 input schema。
-- Apify actor 是否在 Apify console 中可以成功執行。
-
-不同 LinkedIn actor 的 input schema 可能不同；本專案預設使用：
-
-```json
-{"profileUrls":["{url}"]}
-```
-
-如果 actor 需要 `urls` 或 `startUrls`，請用 `APIFY_LINKEDIN_INPUT_JSON` 覆蓋。
+- 是否已執行 `python -m playwright install chromium`。
+- 該 profile 是否公開可讀，不需要登入或驗證。
+- 網站是否有防爬、cookie consent、地區限制或其他阻擋。
+- 重新解析來源，讓系統用最新抓取邏輯更新 evidence 檔。
 
 ## 測試
 

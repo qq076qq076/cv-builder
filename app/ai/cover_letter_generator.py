@@ -134,17 +134,17 @@ def build_cover_letter_prompt(
     job_payload = job.model_dump(mode="json", by_alias=True)
     normalized_job_page_text = job_page_text.strip()
     return (
-        "請根據以下履歷內容與目標職缺資訊，產生一封自我推薦信。\n"
-        "需求：語氣專業、第一人稱、500字內、為該職缺量身打造、只使用履歷中的真實資訊。\n"
-        "請先判讀職缺描述與公司特色，再挑選履歷中最相關的經驗、技能、專案或產業背景。\n"
-        "推薦信必須具體呼應職缺內容，例如產品/產業、工作職責、技術棧、團隊需求、公司特色；避免寫成任何職缺都能套用的泛用文字。\n\n"
-        "目標職缺資訊：\n"
-        f"{json.dumps(job_payload, ensure_ascii=False, indent=2, default=str)}\n\n"
-        "目標職缺網址：\n"
-        f"{job.url}\n\n"
-        "職缺頁面擷取內容（若為空，代表系統無法讀取頁面，仍需根據 URL、公司與職缺標題盡量客製）：\n"
-        f"{normalized_job_page_text or '(未能擷取職缺頁面內容)'}\n\n"
-        "履歷內容：\n"
+        "請根據以下履歷內容與目標職缺資訊，產生一封自我推薦信。"
+        "需求：語氣專業、第一人稱、500字內、為該職缺量身打造、只使用履歷中的真實資訊。"
+        "請先判讀職缺描述與公司特色，再挑選履歷中最相關的經驗、技能、專案或產業背景。"
+        "推薦信必須具體呼應職缺內容，例如產品/產業、工作職責、技術棧、團隊需求、公司特色；避免寫成任何職缺都能套用的泛用文字。"
+        "目標職缺資訊："
+        f"{json.dumps(job_payload, ensure_ascii=False, indent=2, default=str)}"
+        "目標職缺網址："
+        f"{job.url}"
+        "職缺頁面擷取內容（若為空，代表系統無法讀取頁面，仍需根據 URL、公司與職缺標題盡量客製）："
+        f"{normalized_job_page_text or '(未能擷取職缺頁面內容)'}"
+        "履歷內容："
         f"{json.dumps(resume_payload, ensure_ascii=False, indent=2, default=str)}"
     )
 
