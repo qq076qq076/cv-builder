@@ -3,6 +3,19 @@
 {% block body_class %}app-body{% endblock %}
 {% block main_class %}app-shell{% endblock %}
 
+{% macro loading_button(label, loading_label, variant="app-button-primary", icon=None, disabled=False) -%}
+  <button class="app-button {{ variant }} loading-button" type="submit" data-loading-label="{{ loading_label }}" {% if disabled %}disabled{% endif %}>
+    <span class="button-label">
+      {% if icon %}<span class="material-symbols-outlined">{{ icon }}</span>{% endif %}
+      {{ label }}
+    </span>
+    <span class="button-loading" aria-hidden="true">
+      <span class="button-spinner"></span>
+      {{ loading_label }}
+    </span>
+  </button>
+{%- endmacro %}
+
 {% block content %}
   <header class="app-topbar">
     <div class="app-topbar-group">
@@ -89,13 +102,7 @@
               <small>workspace/{{ role.id }}/evidence</small>
             </div>
             <div class="initialize-submit-row">
-              <button class="app-button app-button-primary loading-button" type="submit" data-loading-label="初始化中">
-                <span class="button-label">開始初始化</span>
-                <span class="button-loading" aria-hidden="true">
-                  <span class="button-spinner"></span>
-                  初始化中
-                </span>
-              </button>
+              {{ loading_button("開始初始化", "初始化中") }}
             </div>
           </form>
 
@@ -647,17 +654,13 @@
               </div>
               <span class="job-status">觀察中</span>
               <div class="job-actions">
-                <form method="post" action="/roles/{{ role.id }}/jobs/{{ job.id }}/generate">
+                <form method="post" action="/roles/{{ role.id }}/jobs/{{ job.id }}/generate" data-loading-form>
                   <input name="kind" type="hidden" value="resume">
-                  <button class="app-button app-button-secondary" type="submit">
-                    {% if resume_output %}重新生成專用履歷{% else %}生成專用履歷{% endif %}
-                  </button>
+                  {{ loading_button("重新生成專用履歷" if resume_output else "生成專用履歷", "生成專用履歷中", "app-button-secondary") }}
                 </form>
-                <form method="post" action="/roles/{{ role.id }}/jobs/{{ job.id }}/generate">
+                <form method="post" action="/roles/{{ role.id }}/jobs/{{ job.id }}/generate" data-loading-form>
                   <input name="kind" type="hidden" value="cover_letter">
-                  <button class="app-button app-button-secondary" type="submit">
-                    {% if cover_letter_output %}重新生成推薦信{% else %}生成推薦信{% endif %}
-                  </button>
+                  {{ loading_button("重新生成推薦信" if cover_letter_output else "生成推薦信", "生成推薦信中", "app-button-secondary") }}
                 </form>
                 {% if resume_output %}
                   <a class="app-button app-button-secondary" href="/roles/{{ role.id }}?generated_output={{ resume_output.path }}#jobs">查看專用履歷</a>
@@ -706,16 +709,7 @@
         <div class="evidence-actions">
           <form class="evidence-normalize-form" method="post" action="/roles/{{ role.id }}/sources/normalize" data-loading-form data-language-popup>
             <input name="target_language" type="hidden" value="zh" data-target-language-input>
-            <button class="app-button app-button-accent loading-button" type="submit" data-loading-label="解析中" {% if not sources %}disabled{% endif %}>
-              <span class="button-label">
-                <span class="material-symbols-outlined">auto_fix_high</span>
-                解析資料
-              </span>
-              <span class="button-loading" aria-hidden="true">
-                <span class="button-spinner"></span>
-                解析中
-              </span>
-            </button>
+            {{ loading_button("解析資料", "解析中", "app-button-accent", "auto_fix_high", not sources) }}
           </form>
         </div>
       </div>

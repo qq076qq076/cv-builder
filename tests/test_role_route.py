@@ -680,6 +680,9 @@ class RoleRouteTest(unittest.TestCase):
             self.assertEqual(response.status_code, 200)
             self.assertIn("職缺追蹤清單", response.text)
             self.assertIn("Senior Frontend", response.text)
+            self.assertIn('data-loading-label="生成專用履歷中"', response.text)
+            self.assertIn('data-loading-label="生成推薦信中"', response.text)
+            self.assertIn("button-spinner", response.text)
 
     def test_generate_job_output_route_writes_markdown(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -737,6 +740,7 @@ class RoleRouteTest(unittest.TestCase):
             self.assertIn("專用履歷草稿", page.text)
             self.assertIn("查看專用履歷", page.text)
             self.assertIn("重新生成專用履歷", page.text)
+            self.assertIn('data-loading-label="生成專用履歷中"', page.text)
             self.assertIn("針對 https://jobs.example.com/senior-frontend 的專用履歷", page.text)
 
     def test_generate_cover_letter_shows_popup_and_existing_button(self) -> None:
@@ -799,6 +803,7 @@ class RoleRouteTest(unittest.TestCase):
             self.assertIn("Walker Lin", page.text)
             self.assertIn("查看推薦信", page.text)
             self.assertIn("重新生成推薦信", page.text)
+            self.assertIn('data-loading-label="生成推薦信中"', page.text)
 
     def test_generate_cover_letter_without_api_key_shows_error(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
