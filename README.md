@@ -11,7 +11,7 @@ cv-builder 是一個本機優先的 AI 職涯資料與履歷輔助工具。它�
 - 登錄平台 profile URL，並在解析前抓取 URL 內容作為 evidence。
 - 使用 OpenAI 或 Gemini 將來源資料正規化成結構化履歷。
 - 在角色頁面手動編輯個人摘要、經歷、學歷、專案、技能、聯絡方式與語言能力。
-- 新增職缺 URL，根據職缺頁內容產生專用履歷草稿或 cover letter。
+- 新增職缺 URL，根據職缺頁內容產生專用履歷草稿、PDF 或 cover letter。
 - LinkedIn、104、Cake、Yourator 等 URL 透過 Playwright 抓取 JS render 後的內容。
 
 ## 技術架構
@@ -22,7 +22,7 @@ cv-builder 是一個本機優先的 AI 職涯資料與履歷輔助工具。它�
 - Pydantic
 - file-based JSON storage
 - OpenAI / Gemini API
-- Playwright for JavaScript-rendered profile pages
+- Playwright for JavaScript-rendered profile pages and PDF export
 
 ## 環境變數
 
@@ -136,8 +136,8 @@ http://127.0.0.1:8000/health
 3. 點擊解析來源，系統會抓取來源內容並呼叫 OpenAI 或 Gemini 轉成結構化履歷。
 4. 在角色頁檢查並手動修正履歷內容。
 5. 新增職缺 URL。
-6. 點擊「生成專用履歷」或「生成推薦信」，系統會抓取職缺頁文字並交給 AI 產生客製化 Markdown 草稿。
-7. 生成後可在同一張職缺卡片點擊「查看專用履歷」或「查看推薦信」檢視輸出內容。
+6. 點擊「生成專用履歷」或「生成推薦信」，系統會抓取職缺頁文字並交給 AI 產生客製化 Markdown 草稿；專用履歷會同步輸出 PDF。
+7. 生成後可在同一張職缺卡片點擊「查看專用履歷」、「下載 PDF」或「查看推薦信」檢視輸出內容。
 
 ## URL 抓取注意事項
 

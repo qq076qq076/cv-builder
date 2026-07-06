@@ -11,8 +11,9 @@ from app.ai.cover_letter_generator import CoverLetterGenerator
 from app.ai.tailored_resume_generator import TailoredResumeGenerator
 from app.schemas.job import TrackedJob
 from app.schemas.resume import NormalizedResume
-from app.storage.jobs import JobRepository
+from app.services.pdf_export_service import ResumePdfExporter
 from app.services.url_fetcher import fetch_url_text
+from app.storage.jobs import JobRepository
 
 
 @dataclass(frozen=True)
@@ -20,6 +21,8 @@ class GeneratedJobOutput:
     path: str
     kind: str
     content: str = ""
+    pdf_path: str | None = None
+    job_id: str | None = None
 
 
 class JobService:
@@ -51,6 +54,7 @@ class JobService:
         resume: NormalizedResume,
         cover_letter_generator: CoverLetterGenerator | None = None,
         tailored_resume_generator: TailoredResumeGenerator | None = None,
+        resume_pdf_exporter: ResumePdfExporter | None = None,
     ) -> GeneratedJobOutput | None:
         job = self.repository.get_job(job_id)
         if job is None:
@@ -71,7 +75,23 @@ class JobService:
             content,
             encoding="utf-8",
         )
-        return GeneratedJobOutput(path=relative_path.as_posix(), kind=safe_kind, content=content)
+        pdf_path = None
+        if safe_kind == "resume" and resume_pdf_exporter is not None:
+            pdf_relative_path = Path("outputs") / f"{job.id}-{safe_kind}.pdf"
+            resume_pdf_exporter.export(
+                markdown=content,
+                output_path=self.role_path / pdf_relative_path,
+                job=job,
+                resume=resume,
+            )
+            pdf_path = pdf_relative_path.as_posix()
+        return GeneratedJobOutput(
+            path=relative_path.as_posix(),
+            kind=safe_kind,
+            content=content,
+            pdf_path=pdf_path,
+            job_id=job.id,
+        )
 
     def list_outputs_by_job(self) -> dict[str, dict[str, GeneratedJobOutput]]:
         outputs: dict[str, dict[str, GeneratedJobOutput]] = {}
@@ -88,10 +108,13 @@ class JobService:
         output_path = self.role_path / relative_path
         if not output_path.is_file():
             return None
+        pdf_path = self._pdf_path_for(job_id) if safe_kind == "resume" else None
         return GeneratedJobOutput(
             path=relative_path.as_posix(),
             kind=safe_kind,
             content=output_path.read_text(encoding="utf-8"),
+            pdf_path=pdf_path.as_posix() if pdf_path is not None else None,
+            job_id=job_id,
         )
 
     def get_output_by_path(self, relative_path: str) -> GeneratedJobOutput | None:
@@ -107,11 +130,29 @@ class JobService:
 
         name = requested_path.name
         kind = "cover-letter" if name.endswith("-cover-letter.md") else "resume"
+        job_id = _job_id_from_output_name(name, kind)
+        pdf_path = self._pdf_path_for(job_id) if kind == "resume" and job_id else None
         return GeneratedJobOutput(
             path=requested_path.as_posix(),
             kind=kind,
             content=output_path.read_text(encoding="utf-8"),
+            pdf_path=pdf_path.as_posix() if pdf_path is not None else None,
+            job_id=job_id,
         )
+
+    def get_resume_pdf_path(self, *, job_id: str) -> Path | None:
+        if self.repository.get_job(job_id) is None:
+            return None
+        relative_path = self._pdf_path_for(job_id)
+        if relative_path is None:
+            return None
+        return self.role_path / relative_path
+
+    def _pdf_path_for(self, job_id: str) -> Path | None:
+        relative_path = Path("outputs") / f"{job_id}-resume.pdf"
+        if (self.role_path / relative_path).is_file():
+            return relative_path
+        return None
 
 
 def _title_from_url(url: str) -> str:
@@ -125,6 +166,13 @@ def _company_from_url(url: str) -> str:
     parsed = urlparse(url)
     host = parsed.netloc.replace("www.", "")
     return host or "Unknown"
+
+
+def _job_id_from_output_name(name: str, kind: str) -> str | None:
+    suffix = "-cover-letter.md" if kind == "cover-letter" else "-resume.md"
+    if not name.endswith(suffix):
+        return None
+    return name[: -len(suffix)]
 
 
 def _build_generated_markdown(

@@ -664,6 +664,9 @@
                 </form>
                 {% if resume_output %}
                   <a class="app-button app-button-secondary" href="/roles/{{ role.id }}?generated_output={{ resume_output.path }}#jobs">查看專用履歷</a>
+                  {% if resume_output.pdf_path %}
+                    <a class="app-button app-button-secondary" href="/roles/{{ role.id }}/outputs/{{ job.id }}/resume.pdf">下載 PDF</a>
+                  {% endif %}
                 {% endif %}
                 {% if cover_letter_output %}
                   <a class="app-button app-button-secondary" href="/roles/{{ role.id }}?generated_output={{ cover_letter_output.path }}#jobs">查看推薦信</a>
@@ -690,6 +693,11 @@
                 <span class="material-symbols-outlined">close</span>
               </a>
             </div>
+            {% if active_generated_output.kind == "resume" and active_generated_output.pdf_path and active_generated_output.job_id %}
+              <div class="generated-output-actions">
+                <a class="app-button app-button-primary" href="/roles/{{ role.id }}/outputs/{{ active_generated_output.job_id }}/resume.pdf">下載 PDF</a>
+              </div>
+            {% endif %}
             <pre class="generated-output-content">{{ active_generated_output.content }}</pre>
           </section>
         </div>

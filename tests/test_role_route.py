@@ -43,6 +43,23 @@ class FakeTailoredResumeGenerator:
         return f"# {resume.name}\n\n針對 {job.url} 的專用履歷。"
 
 
+class TimeoutTailoredResumeGenerator(FakeTailoredResumeGenerator):
+    def generate(self, *, resume, job, job_page_text: str = "") -> str:
+        raise RuntimeError("Gemini API request timed out")
+
+
+class FakeResumePdfExporter:
+    calls = []
+
+    def __init__(self, *args, **kwargs) -> None:
+        pass
+
+    def export(self, *, markdown, output_path: Path, job, resume) -> None:
+        self.calls.append((markdown, output_path.name, job.id, resume.name))
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        output_path.write_bytes(b"%PDF-1.4\nfake resume pdf\n")
+
+
 class FakeResumeNormalizationService:
     calls = []
 
@@ -689,6 +706,7 @@ class RoleRouteTest(unittest.TestCase):
             workspace = Path(tmpdir) / "workspace"
             RoleService(workspace).create_role("Walker")
             FakeTailoredResumeGenerator.calls = []
+            FakeResumePdfExporter.calls = []
             client = self._client_for(workspace, openai_api_key="openai-key")
             client.post(
                 "/roles/walker/resume/profile",
@@ -710,6 +728,10 @@ class RoleRouteTest(unittest.TestCase):
                     "app.services.job_service._fetch_job_page_text",
                     return_value="Senior frontend role for a jobs platform using Angular.",
                 ),
+                patch(
+                    "app.routes.roles.PlaywrightResumePdfExporter",
+                    FakeResumePdfExporter,
+                ),
             ):
                 response = client.post(
                     f"/roles/walker/jobs/{job_id}/generate",
@@ -723,6 +745,7 @@ class RoleRouteTest(unittest.TestCase):
                 f"/roles/walker?generated_output=outputs/{job_id}-resume.md#jobs",
             )
             self.assertTrue((workspace / f"walker/outputs/{job_id}-resume.md").is_file())
+            self.assertTrue((workspace / f"walker/outputs/{job_id}-resume.pdf").is_file())
             self.assertEqual(
                 FakeTailoredResumeGenerator.calls,
                 [
@@ -735,13 +758,31 @@ class RoleRouteTest(unittest.TestCase):
                     )
                 ],
             )
+            self.assertEqual(
+                FakeResumePdfExporter.calls,
+                [
+                    (
+                        f"# Walker Lin\n\n針對 https://jobs.example.com/senior-frontend 的專用履歷。",
+                        f"{job_id}-resume.pdf",
+                        job_id,
+                        "Walker Lin",
+                    )
+                ],
+            )
             page = client.get(response.headers["location"])
             self.assertEqual(page.status_code, 200)
             self.assertIn("專用履歷草稿", page.text)
             self.assertIn("查看專用履歷", page.text)
+            self.assertIn(f'href="/roles/walker/outputs/{job_id}/resume.pdf"', page.text)
+            self.assertIn("下載 PDF", page.text)
             self.assertIn("重新生成專用履歷", page.text)
             self.assertIn('data-loading-label="生成專用履歷中"', page.text)
             self.assertIn("針對 https://jobs.example.com/senior-frontend 的專用履歷", page.text)
+
+            download = client.get(f"/roles/walker/outputs/{job_id}/resume.pdf")
+            self.assertEqual(download.status_code, 200)
+            self.assertEqual(download.headers["content-type"], "application/pdf")
+            self.assertTrue(download.content.startswith(b"%PDF-1.4"))
 
     def test_generate_cover_letter_shows_popup_and_existing_button(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -857,6 +898,43 @@ class RoleRouteTest(unittest.TestCase):
             self.assertIn("生成失敗", response.text)
             self.assertIn("缺少 OPENAI_API_KEY 或 GEMINI_API_KEY", response.text)
 
+    def test_generate_tailored_resume_timeout_shows_error(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            workspace = Path(tmpdir) / "workspace"
+            RoleService(workspace).create_role("Walker")
+            client = self._client_for(
+                workspace,
+                openai_api_key="",
+                gemini_api_key="gemini-key",
+            )
+            client.post(
+                "/roles/walker/resume/profile",
+                data={"name": "Walker Lin", "summary": "Frontend engineer"},
+            )
+            client.post(
+                "/roles/walker/jobs",
+                data={"job_url": "https://jobs.example.com/senior-frontend"},
+            )
+            jobs_path = workspace / "walker/jobs/jobs.json"
+            job_id = json.loads(jobs_path.read_text(encoding="utf-8"))["jobs"][0]["id"]
+
+            with (
+                patch(
+                    "app.routes.roles.GeminiTailoredResumeGenerator",
+                    TimeoutTailoredResumeGenerator,
+                ),
+                patch("app.services.job_service._fetch_job_page_text", return_value=""),
+            ):
+                response = client.post(
+                    f"/roles/walker/jobs/{job_id}/generate",
+                    data={"kind": "resume"},
+                    follow_redirects=True,
+                )
+
+            self.assertEqual(response.status_code, 200)
+            self.assertIn("生成失敗", response.text)
+            self.assertIn("Gemini API request timed out", response.text)
+
     def test_normalize_source_without_api_key_shows_message(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             workspace = Path(tmpdir) / "workspace"
@@ -885,11 +963,16 @@ class RoleRouteTest(unittest.TestCase):
             self.assertEqual(response.status_code, 200)
             self.assertIn("缺少 OPENAI_API_KEY 或 GEMINI_API_KEY", response.text)
 
-    def _client_for(self, workspace: Path, openai_api_key: str | None = None) -> TestClient:
+    def _client_for(
+        self,
+        workspace: Path,
+        openai_api_key: str | None = None,
+        gemini_api_key: str = "",
+    ) -> TestClient:
         env = {"CV_BUILDER_WORKSPACE": str(workspace)}
         if openai_api_key is not None:
             env["OPENAI_API_KEY"] = openai_api_key
-        env["GEMINI_API_KEY"] = ""
+        env["GEMINI_API_KEY"] = gemini_api_key
         patcher = patch.dict(os.environ, env)
         patcher.start()
         self.addCleanup(patcher.stop)

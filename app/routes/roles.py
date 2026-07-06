@@ -3,8 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from urllib.parse import quote, urlparse
 
-from fastapi import APIRouter, File, Form, Request, UploadFile, status
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile, status
+from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
 from app.ai.cover_letter_generator import (
@@ -27,8 +27,9 @@ from app.schemas.resume import (
     ResumeLanguage,
     ResumeProject,
 )
-from app.services.job_service import JobService
 from app.services.import_service import ImportService
+from app.services.job_service import JobService
+from app.services.pdf_export_service import PlaywrightResumePdfExporter, ResumePdfExporter
 from app.services.role_service import RoleService
 from app.services.resume_normalization_service import (
     ResumeNormalizationResult,
@@ -113,6 +114,25 @@ def role_detail(
             "normalization_result": None,
             "edit": _resume_edit_context(resume),
         },
+    )
+
+
+@router.get("/roles/{role_id}/outputs/{job_id}/resume.pdf")
+def download_tailored_resume_pdf(role_id: str, job_id: str) -> FileResponse:
+    settings = get_settings()
+    role_service = RoleService(settings.workspace_path)
+    role = role_service.get_role(role_id)
+    if role is None:
+        raise HTTPException(status_code=404, detail="Role not found")
+
+    pdf_path = JobService(role_service.role_path(role_id)).get_resume_pdf_path(job_id=job_id)
+    if pdf_path is None:
+        raise HTTPException(status_code=404, detail="PDF not found")
+
+    return FileResponse(
+        pdf_path,
+        media_type="application/pdf",
+        filename=f"{job_id}-resume.pdf",
     )
 
 
@@ -463,6 +483,7 @@ def generate_role_job_output(
                     settings=settings,
                     kind=kind,
                 ),
+                resume_pdf_exporter=_build_resume_pdf_exporter(kind=kind),
             )
         except RuntimeError as exc:
             return RedirectResponse(
@@ -654,6 +675,12 @@ def _build_tailored_resume_generator(
             log_path=role_path / "logs/ai-tailored-resume.jsonl",
         )
     raise RuntimeError("缺少 OPENAI_API_KEY 或 GEMINI_API_KEY，無法生成專用履歷")
+
+
+def _build_resume_pdf_exporter(*, kind: str) -> ResumePdfExporter | None:
+    if kind != "resume":
+        return None
+    return PlaywrightResumePdfExporter()
 
 
 def _has_profile_content(profile: RoleProfile) -> bool:

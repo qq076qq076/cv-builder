@@ -313,6 +313,8 @@ class GeminiResumeParser:
             detail = exc.read().decode("utf-8", errors="replace")
             _debug_log_ai_payload("Gemini error output", detail, self.log_path)
             raise RuntimeError(f"Gemini API HTTP {exc.code}: {detail}") from exc
+        except TimeoutError as exc:
+            raise RuntimeError("Gemini API request timed out") from exc
         except URLError as exc:
             raise RuntimeError(f"Gemini API request failed: {exc.reason}") from exc
 
