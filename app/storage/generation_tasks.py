@@ -93,6 +93,42 @@ class GenerationTaskRepository:
             latest.setdefault(task.job_id, {}).setdefault(task.kind, task)
         return latest
 
+    def get_task(self, task_id: str) -> GenerationTask | None:
+        with self._lock():
+            for task in self._read_tasks_unlocked():
+                if task.id == task_id:
+                    return task
+        return None
+
+    def cancel_active(self, *, job_id: str, kind: str) -> GenerationTask | None:
+        with self._lock():
+            tasks = self._read_tasks_unlocked()
+            updated: list[GenerationTask] = []
+            cancelled_task: GenerationTask | None = None
+            for task in tasks:
+                if (
+                    cancelled_task is None
+                    and task.job_id == job_id
+                    and task.kind == kind
+                    and task.status in {"queued", "running"}
+                ):
+                    cancelled_task = GenerationTask(
+                        id=task.id,
+                        job_id=task.job_id,
+                        kind=task.kind,
+                        status="cancelled",
+                        output_path=task.output_path,
+                        pdf_path=task.pdf_path,
+                        error="",
+                        created_at=task.created_at,
+                        updated_at=_now_iso(),
+                    )
+                    updated.append(cancelled_task)
+                    continue
+                updated.append(task)
+            self._write_tasks_unlocked(updated)
+            return cancelled_task
+
     def mark_running(self, task_id: str) -> None:
         self._update_task(task_id, status="running")
 
@@ -128,6 +164,9 @@ class GenerationTaskRepository:
             updated: list[GenerationTask] = []
             for task in tasks:
                 if task.id != task_id:
+                    updated.append(task)
+                    continue
+                if task.status == "cancelled":
                     updated.append(task)
                     continue
                 updated.append(

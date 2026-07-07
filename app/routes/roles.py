@@ -508,6 +508,30 @@ def list_generation_tasks(role_id: str) -> JSONResponse:
     )
 
 
+@router.post("/roles/{role_id}/jobs/{job_id}/generation-tasks/cancel")
+def cancel_generation_task(
+    role_id: str,
+    job_id: str,
+    kind: str = Form(...),
+) -> JSONResponse:
+    settings = get_settings()
+    role_service = RoleService(settings.workspace_path)
+    role = role_service.get_role(role_id)
+    if role is None:
+        raise HTTPException(status_code=404, detail="Role not found")
+
+    role_path = role_service.role_path(role_id)
+    task = GenerationTaskRepository(role_path).cancel_active(
+        job_id=job_id,
+        kind=_safe_generation_kind(kind),
+    )
+    return JSONResponse(
+        {
+            "task": _generation_task_payload(task=task, role_id=role_id) if task else None,
+        }
+    )
+
+
 @router.post("/roles/{role_id}/sources/{source_id}/normalize", response_class=HTMLResponse)
 def normalize_source(
     request: Request,
@@ -697,7 +721,11 @@ def _build_resume_pdf_exporter(*, kind: str) -> ResumePdfExporter | None:
 
 def _run_generation_task(*, role_path: Path, settings, task: GenerationTask) -> None:
     repository = GenerationTaskRepository(role_path)
+    if _is_generation_task_cancelled(repository, task.id):
+        return
     repository.mark_running(task.id)
+    if _is_generation_task_cancelled(repository, task.id):
+        return
     try:
         generated_output = JobService(role_path).generate_output(
             job_id=task.job_id,
@@ -726,11 +754,19 @@ def _run_generation_task(*, role_path: Path, settings, task: GenerationTask) -> 
         repository.mark_failed(task.id, error="找不到職缺，無法生成輸出")
         return
 
+    if _is_generation_task_cancelled(repository, task.id):
+        return
+
     repository.mark_completed(
         task.id,
         output_path=generated_output.path,
         pdf_path=generated_output.pdf_path or "",
     )
+
+
+def _is_generation_task_cancelled(repository: GenerationTaskRepository, task_id: str) -> bool:
+    task = repository.get_task(task_id)
+    return task is not None and task.status == "cancelled"
 
 
 def _safe_generation_kind(kind: str) -> str:

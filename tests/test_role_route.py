@@ -717,11 +717,12 @@ class RoleRouteTest(unittest.TestCase):
             self.assertEqual(response.status_code, 200)
             self.assertIn("職缺追蹤清單", response.text)
             self.assertIn("Senior Frontend", response.text)
-            self.assertIn('data-loading-label="生成專用履歷中"', response.text)
-            self.assertIn('data-loading-label="生成推薦信中"', response.text)
+            self.assertIn('data-loading-label="生成專用履歷中，點擊取消"', response.text)
+            self.assertIn('data-loading-label="生成推薦信中，點擊取消"', response.text)
+            self.assertIn("data-cancel-action", response.text)
             self.assertIn("button-spinner", response.text)
 
-    def test_generate_job_output_shows_running_state_after_reload(self) -> None:
+    def test_generate_job_output_shows_running_state_after_reload_and_can_cancel(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             workspace = Path(tmpdir) / "workspace"
             RoleService(workspace).create_role("Walker")
@@ -754,8 +755,23 @@ class RoleRouteTest(unittest.TestCase):
             page = client.get("/roles/walker")
             self.assertEqual(page.status_code, 200)
             self.assertIn("生成專用履歷中", page.text)
+            self.assertIn("生成專用履歷中，點擊取消", page.text)
             self.assertIn('data-generation-kind="resume"', page.text)
-            self.assertIn("disabled", page.text)
+            self.assertIn(
+                f'data-cancel-action="/roles/walker/jobs/{job_id}/generation-tasks/cancel"',
+                page.text,
+            )
+
+            cancel_response = client.post(
+                f"/roles/walker/jobs/{job_id}/generation-tasks/cancel",
+                data={"kind": "resume"},
+            )
+            self.assertEqual(cancel_response.status_code, 200)
+            self.assertEqual(cancel_response.json()["task"]["status"], "cancelled")
+
+            tasks = client.get("/roles/walker/generation-tasks")
+            self.assertEqual(tasks.status_code, 200)
+            self.assertEqual(tasks.json()["tasks"][0]["status"], "cancelled")
 
     def test_generate_job_output_route_writes_markdown(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -843,7 +859,7 @@ class RoleRouteTest(unittest.TestCase):
             self.assertIn(f'href="/roles/walker/outputs/{job_id}/resume.pdf"', page.text)
             self.assertIn("下載 PDF", page.text)
             self.assertIn("重新生成專用履歷", page.text)
-            self.assertIn('data-loading-label="生成專用履歷中"', page.text)
+            self.assertIn('data-loading-label="生成專用履歷中，點擊取消"', page.text)
             self.assertIn("針對 https://jobs.example.com/senior-frontend 的專用履歷", page.text)
 
             download = client.get(f"/roles/walker/outputs/{job_id}/resume.pdf")
@@ -920,7 +936,7 @@ class RoleRouteTest(unittest.TestCase):
             self.assertIn("Walker Lin", page.text)
             self.assertIn("查看推薦信", page.text)
             self.assertIn("重新生成推薦信", page.text)
-            self.assertIn('data-loading-label="生成推薦信中"', page.text)
+            self.assertIn('data-loading-label="生成推薦信中，點擊取消"', page.text)
 
     def test_generate_cover_letter_without_api_key_shows_error(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
