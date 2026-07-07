@@ -61,30 +61,29 @@
       }
 
       .resume-content h2 {
-        display: flex;
-        gap: 8px;
-        align-items: center;
         margin: 16px 0 8px;
         break-after: avoid;
+        border-bottom: 1px solid #d8e4f2;
         color: #1e3a5f;
         font-size: 11.3pt;
         letter-spacing: 0;
+        padding-bottom: 3px;
         text-transform: none;
       }
 
       .resume-content h2::before {
         content: "";
+        display: inline-block;
         width: 8px;
         height: 8px;
         border-radius: 999px;
         background: #2563eb;
+        margin-right: 8px;
+        vertical-align: 1px;
       }
 
       .resume-content h2::after {
-        content: "";
-        flex: 1 1 auto;
-        height: 1px;
-        background: #d8e4f2;
+        content: none;
       }
 
       .resume-content h3 {
@@ -95,10 +94,6 @@
       }
 
       .experience-heading {
-        display: grid;
-        grid-template-columns: minmax(0, 1fr) auto;
-        gap: 12px;
-        align-items: baseline;
         break-after: avoid;
         break-inside: avoid;
         margin: 12px 0 6px;
@@ -109,6 +104,7 @@
       }
 
       .experience-heading h3 {
+        display: inline;
         margin: 0;
       }
 
@@ -117,6 +113,7 @@
         font-size: 9pt;
         font-weight: 700;
         white-space: nowrap;
+        margin-left: 10px;
       }
 
       .resume-content p {
@@ -170,10 +167,49 @@
       .resume-content ul {
         break-inside: avoid;
       }
+
+      .resume-layout-technical .resume-header {
+        border-color: #c7ddf5;
+        background: linear-gradient(135deg, #f7fbff 0%, #e9f3ff 60%, #f3f8ff 100%);
+      }
+
+      .resume-layout-technical .resume-content h2::before,
+      .resume-layout-technical .resume-content li::before {
+        background: #0f766e;
+      }
+
+      .resume-layout-technical .resume-content h2 {
+        color: #134e4a;
+      }
+
+      .resume-layout-technical .resume-section-featured {
+        break-inside: avoid;
+        border: 1px solid #cce6e3;
+        border-radius: 9px;
+        background: #f6fbfa;
+        padding: 10px 12px 8px;
+        margin: 8px 0 12px;
+      }
+
+      .resume-layout-technical .resume-section-featured h2 {
+        margin-top: 0;
+      }
+
+      .resume-layout-technical .resume-section-featured ul {
+        margin-bottom: 0;
+      }
+
+      .resume-layout-technical .resume-section-featured li {
+        margin-bottom: 2px;
+      }
+
+      .resume-layout-standard .resume-section-skills ul {
+        margin-bottom: 0;
+      }
     </style>
   </head>
   <body>
-    <main class="resume-shell">
+    <main class="resume-shell resume-layout-{{ layout_variant }}">
       <header class="resume-header">
         <div>
           <h1>{{ resume.name or "專用履歷" }}</h1>

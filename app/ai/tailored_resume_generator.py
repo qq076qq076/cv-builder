@@ -123,8 +123,12 @@ Rules:
 - Prefer the most relevant skills, experiences, projects, education, certificates, and languages for the target job.
 - Improve experience and project descriptions for clarity, impact, and relevance without adding facts, metrics, employers, dates, or technologies that are not in the source resume.
 - Use Markdown bold for important keywords, technologies, domains, responsibilities, and outcomes.
+- Use ATS-friendly section headings and plain text structure. Prefer Summary, Skills, Work Experience, Projects, Education, Certifications, Languages, and Contact equivalents.
+- Mirror exact job-description keywords when they are truthfully supported by the source resume. Do not replace concrete tools with vague categories.
+- Write experience bullets with action, scope/context, and truthful outcome or responsibility. Do not invent metrics.
 - For links, output the plain URL only. Do not use Markdown link syntax.
 - Omit personal profile links such as LinkedIn, CakeResume, 104, Yourator, or generic profile URLs from the final resume.
+- Do not use tables, images, icons, emoji, text boxes, or multi-column Markdown.
 - Do not use horizontal rules.
 - Keep the result scannable for recruiters and ATS-friendly.
 """
@@ -145,9 +149,13 @@ def build_tailored_resume_prompt(
         "請根據職缺頁面內容判斷職責、技術棧、產業、產品與公司需求，再從履歷中挑選最相關的摘要、技能、經歷與專案。"
         "嚴格限制：只能使用履歷內容中已存在的真實資訊；不得新增不存在的公司、職稱、年資、量化成果、學歷、證照、語言或聯絡方式。"
         "經歷與專案敘述可以在不脫離原始事實的前提下優化語氣、清楚度、重點排序與職缺關聯性，但不得新增任何原始資料沒有的成果、數字、工具或責任。"
+        "ATS 需求：請使用標準區塊標題與純文字結構；優先使用「專業摘要、核心技能、工作經歷、專案經驗、學歷、證照、語言能力、聯絡方式」。"
+        "請從職缺描述中辨識 required skills、preferred skills、responsibilities、domain keywords，並在履歷中優先保留與來源履歷事實相符的精確關鍵字，例如具體工具、框架、雲端平台、作業系統、產業與職責名稱。"
+        "工作經歷 bullet 請盡量包含動作、場景/範圍、真實成果或責任；沒有量化數字時，不要硬編數字。"
         "請用 Markdown 粗體標示關鍵技術、職責、領域、成果或與職缺高度相關的重點。"
         "若內容包含網址，請直接輸出純網址，不要使用 Markdown 超連結格式。"
         "請不要輸出個人檔案連結，例如 LinkedIn、CakeResume、104、Yourator 或其他 profile URL；聯絡方式只保留 email、電話、地點等必要資訊。"
+        "請不要使用表格、圖片、icon、emoji、文字框或 Markdown 多欄排版，避免 ATS 無法解析。"
         "請不要輸出水平分隔線，例如 ---、*** 或 ___。"
         "工作經歷中，每段經歷請使用三級標題放公司名稱與職稱，下一行單獨放就職期間，例如 **2021/01 - 2024/06**，後續 PDF 會自動排到右側。"
         "如果某個履歷區塊沒有資料，請直接省略該區塊，不要補寫。"
