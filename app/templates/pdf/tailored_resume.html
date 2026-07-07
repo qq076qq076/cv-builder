@@ -5,7 +5,7 @@
     <style>
       @page {
         size: A4;
-        margin: 16mm 14mm;
+        margin: 14mm 13mm;
       }
 
       * {
@@ -14,10 +14,11 @@
 
       body {
         margin: 0;
-        color: #1f2933;
+        color: #24313f;
         font-family: "Noto Sans TC", "PingFang TC", "Microsoft JhengHei", Arial, sans-serif;
-        font-size: 10.5pt;
-        line-height: 1.45;
+        font-size: 10.2pt;
+        line-height: 1.52;
+        background: #ffffff;
       }
 
       .resume-shell {
@@ -25,21 +26,34 @@
       }
 
       .resume-header {
-        border-bottom: 2px solid #2563eb;
-        padding-bottom: 10px;
-        margin-bottom: 14px;
+        position: relative;
+        overflow: hidden;
+        border: 1px solid #dbe7f4;
+        border-radius: 10px;
+        background: linear-gradient(135deg, #f7fbff 0%, #eef6ff 100%);
+        padding: 14px 18px 13px 20px;
+        margin-bottom: 16px;
+      }
+
+      .resume-header::before {
+        content: "";
+        position: absolute;
+        inset: 0 auto 0 0;
+        width: 5px;
+        background: #2563eb;
       }
 
       .resume-header h1 {
         margin: 0;
         color: #0f172a;
-        font-size: 24pt;
+        font-size: 25pt;
         line-height: 1.1;
       }
 
       .resume-header p {
-        margin: 4px 0 0;
+        margin: 5px 0 0;
         color: #475569;
+        font-size: 10.5pt;
       }
 
       .resume-content h1 {
@@ -47,17 +61,34 @@
       }
 
       .resume-content h2 {
-        margin: 14px 0 6px;
+        display: flex;
+        gap: 8px;
+        align-items: center;
+        margin: 16px 0 8px;
         break-after: avoid;
-        border-bottom: 1px solid #d8dee9;
-        color: #1d4ed8;
-        font-size: 12pt;
+        color: #1e3a5f;
+        font-size: 11.3pt;
         letter-spacing: 0;
-        padding-bottom: 3px;
+        text-transform: none;
+      }
+
+      .resume-content h2::before {
+        content: "";
+        width: 8px;
+        height: 8px;
+        border-radius: 999px;
+        background: #2563eb;
+      }
+
+      .resume-content h2::after {
+        content: "";
+        flex: 1 1 auto;
+        height: 1px;
+        background: #d8e4f2;
       }
 
       .resume-content h3 {
-        margin: 10px 0 4px;
+        margin: 11px 0 5px;
         break-after: avoid;
         color: #0f172a;
         font-size: 10.5pt;
@@ -70,7 +101,11 @@
         align-items: baseline;
         break-after: avoid;
         break-inside: avoid;
-        margin: 10px 0 4px;
+        margin: 12px 0 6px;
+        border-left: 3px solid #60a5fa;
+        border-radius: 6px;
+        background: #f8fbff;
+        padding: 7px 10px;
       }
 
       .experience-heading h3 {
@@ -78,23 +113,37 @@
       }
 
       .experience-heading span {
-        color: #475569;
+        color: #31506f;
         font-size: 9pt;
         font-weight: 700;
         white-space: nowrap;
       }
 
       .resume-content p {
-        margin: 0 0 7px;
+        margin: 0 0 8px;
       }
 
       .resume-content ul {
-        margin: 4px 0 8px 18px;
+        margin: 5px 0 10px 0;
         padding: 0;
+        list-style: none;
       }
 
       .resume-content li {
-        margin-bottom: 3px;
+        position: relative;
+        margin-bottom: 4px;
+        padding-left: 15px;
+      }
+
+      .resume-content li::before {
+        content: "";
+        position: absolute;
+        left: 1px;
+        top: 0.62em;
+        width: 4px;
+        height: 4px;
+        border-radius: 999px;
+        background: #2563eb;
       }
 
       .resume-content strong {
@@ -103,7 +152,16 @@
       }
 
       .section-gap {
-        height: 8px;
+        height: 10px;
+      }
+
+      .resume-content code {
+        border-radius: 4px;
+        background: #eef4fb;
+        color: #18324f;
+        font-family: "Noto Sans TC", "PingFang TC", "Microsoft JhengHei", Arial, sans-serif;
+        font-size: 9.5pt;
+        padding: 1px 4px;
       }
 
       .resume-content h2,
