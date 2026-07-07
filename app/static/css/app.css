@@ -1524,6 +1524,25 @@ textarea {
   gap: 8px;
 }
 
+.generation-toast-list {
+  display: grid;
+  gap: 10px;
+}
+
+.generation-toast {
+  margin: 0;
+}
+
+.generation-toast a {
+  color: var(--color-primary);
+  font-weight: 800;
+  text-decoration: none;
+}
+
+.generation-toast a:hover {
+  text-decoration: underline;
+}
+
 .app-modal-backdrop {
   position: fixed;
   inset: 0;

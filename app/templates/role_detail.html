@@ -633,6 +633,7 @@
             生成失敗：{{ generated_error }}
           </div>
         {% endif %}
+        <div class="generation-toast-list" data-generation-toasts aria-live="polite"></div>
         <form class="job-create-form" method="post" action="/roles/{{ role.id }}/jobs">
           <label>
             <span>新增職缺網址</span>
@@ -646,6 +647,11 @@
             {% set job_output = job_outputs.get(job.id, {}) %}
             {% set resume_output = job_output.get("resume") %}
             {% set cover_letter_output = job_output.get("cover-letter") %}
+            {% set job_tasks = generation_tasks.get(job.id, {}) %}
+            {% set resume_task = job_tasks.get("resume") %}
+            {% set cover_letter_task = job_tasks.get("cover-letter") %}
+            {% set resume_running = resume_task and resume_task.status in ["queued", "running"] %}
+            {% set cover_letter_running = cover_letter_task and cover_letter_task.status in ["queued", "running"] %}
             <article class="job-item">
               <div class="job-company-badge">{{ job.company[:1]|upper if job.company else "J" }}</div>
               <div class="job-item-main">
@@ -654,13 +660,13 @@
               </div>
               <span class="job-status">觀察中</span>
               <div class="job-actions">
-                <form method="post" action="/roles/{{ role.id }}/jobs/{{ job.id }}/generate" data-loading-form>
+                <form class="{% if resume_running %}is-submitting{% endif %}" method="post" action="/roles/{{ role.id }}/jobs/{{ job.id }}/generate" data-loading-form data-background-generate data-job-id="{{ job.id }}" data-generation-kind="resume">
                   <input name="kind" type="hidden" value="resume">
-                  {{ loading_button("重新生成專用履歷" if resume_output else "生成專用履歷", "生成專用履歷中", "app-button-secondary") }}
+                  {{ loading_button("生成專用履歷中" if resume_running else "重新生成專用履歷" if resume_output else "生成專用履歷", "生成專用履歷中", "app-button-secondary", None, resume_running) }}
                 </form>
-                <form method="post" action="/roles/{{ role.id }}/jobs/{{ job.id }}/generate" data-loading-form>
+                <form class="{% if cover_letter_running %}is-submitting{% endif %}" method="post" action="/roles/{{ role.id }}/jobs/{{ job.id }}/generate" data-loading-form data-background-generate data-job-id="{{ job.id }}" data-generation-kind="cover-letter">
                   <input name="kind" type="hidden" value="cover_letter">
-                  {{ loading_button("重新生成推薦信" if cover_letter_output else "生成推薦信", "生成推薦信中", "app-button-secondary") }}
+                  {{ loading_button("生成推薦信中" if cover_letter_running else "重新生成推薦信" if cover_letter_output else "生成推薦信", "生成推薦信中", "app-button-secondary", None, cover_letter_running) }}
                 </form>
                 {% if resume_output %}
                   <a class="app-button app-button-secondary" href="/roles/{{ role.id }}?generated_output={{ resume_output.path }}#jobs">查看專用履歷</a>
@@ -960,7 +966,140 @@
 
     document.querySelectorAll("[data-language-popup]").forEach(setupLanguagePopup);
 
+    const roleId = "{{ role.id }}";
+    const toastList = document.querySelector("[data-generation-toasts]");
+    const activeGenerationForms = new Map();
+    const loadNotifiedTaskIds = () => {
+      try {
+        return JSON.parse(window.sessionStorage.getItem(`generation-notified:${roleId}`) || "[]");
+      } catch (_error) {
+        return [];
+      }
+    };
+    const notifiedTaskIds = new Set(loadNotifiedTaskIds());
+
+    const saveNotifiedTaskIds = () => {
+      window.sessionStorage.setItem(
+        `generation-notified:${roleId}`,
+        JSON.stringify(Array.from(notifiedTaskIds).slice(-100))
+      );
+    };
+
+    const taskKey = (jobId, kind) => `${jobId}:${kind}`;
+
+    const setGenerationFormRunning = (form, running) => {
+      form.classList.toggle("is-submitting", running);
+      form.querySelectorAll('button[type="submit"]').forEach((button) => {
+        button.disabled = running;
+        if (running) {
+          button.setAttribute("aria-busy", "true");
+          const loadingLabel = button.dataset.loadingLabel;
+          if (loadingLabel) button.setAttribute("aria-label", loadingLabel);
+        } else {
+          button.removeAttribute("aria-busy");
+          button.removeAttribute("aria-label");
+        }
+      });
+    };
+
+    document.querySelectorAll("[data-background-generate]").forEach((form) => {
+      activeGenerationForms.set(taskKey(form.dataset.jobId, form.dataset.generationKind), form);
+      if (form.classList.contains("is-submitting")) {
+        setGenerationFormRunning(form, true);
+      }
+      form.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        setGenerationFormRunning(form, true);
+        try {
+          const response = await fetch(form.action, {
+            method: "POST",
+            body: new FormData(form),
+            headers: {"X-Requested-With": "fetch"},
+          });
+          if (!response.ok) {
+            throw new Error(`HTTP ${response.status}`);
+          }
+          pollGenerationTasks();
+        } catch (error) {
+          setGenerationFormRunning(form, false);
+          addGenerationToast({
+            status: "failed",
+            label: "生成任務",
+            error: `送出失敗：${error.message}`,
+          });
+        }
+      });
+    });
+
+    const addGenerationToast = (task) => {
+      if (!toastList) return;
+      const notice = document.createElement("div");
+      notice.className = `app-notice generation-toast ${task.status === "failed" ? "app-notice-muted" : ""}`;
+      const label = task.label || "生成任務";
+      if (task.status === "completed") {
+        notice.append(`${label}已生成。`);
+        if (task.viewUrl) {
+          const viewLink = document.createElement("a");
+          viewLink.href = task.viewUrl;
+          viewLink.textContent = `查看${label}`;
+          notice.append(" ", viewLink);
+        }
+        if (task.pdfUrl) {
+          const pdfLink = document.createElement("a");
+          pdfLink.href = task.pdfUrl;
+          pdfLink.textContent = "下載 PDF";
+          notice.append(" ", pdfLink);
+        }
+      } else {
+        notice.textContent = `${label}生成失敗：${task.error || "未知錯誤"}`;
+      }
+      toastList.prepend(notice);
+    };
+
+    const applyGenerationTasks = (tasks) => {
+      let hasActiveTask = false;
+      tasks.forEach((task) => {
+        const key = taskKey(task.jobId, task.kind);
+        const form = activeGenerationForms.get(key);
+        const isActive = task.status === "queued" || task.status === "running";
+        if (isActive) {
+          hasActiveTask = true;
+        }
+        if (form) {
+          setGenerationFormRunning(form, isActive);
+        }
+        if ((task.status === "completed" || task.status === "failed") && !notifiedTaskIds.has(task.id)) {
+          notifiedTaskIds.add(task.id);
+          saveNotifiedTaskIds();
+          addGenerationToast(task);
+        }
+      });
+      return hasActiveTask;
+    };
+
+    const pollGenerationTasks = async () => {
+      if (!activeGenerationForms.size) return;
+      try {
+        const response = await fetch(`/roles/${roleId}/generation-tasks`, {
+          headers: {"Accept": "application/json"},
+        });
+        if (!response.ok) return;
+        const data = await response.json();
+        const hasActiveTask = applyGenerationTasks(data.tasks || []);
+        if (hasActiveTask) {
+          window.setTimeout(pollGenerationTasks, 2500);
+        }
+      } catch (_error) {
+        window.setTimeout(pollGenerationTasks, 5000);
+      }
+    };
+
+    pollGenerationTasks();
+
     document.querySelectorAll("[data-loading-form]").forEach((form) => {
+      if (form.dataset.backgroundGenerate !== undefined) {
+        return;
+      }
       form.addEventListener("submit", () => {
         form.classList.add("is-submitting");
         form.querySelectorAll('button[type="submit"]').forEach((button) => {

@@ -43,9 +43,9 @@ class FakeTailoredResumeGenerator:
         return f"# {resume.name}\n\n針對 {job.url} 的專用履歷。"
 
 
-class TimeoutTailoredResumeGenerator(FakeTailoredResumeGenerator):
+class FailingTailoredResumeGenerator(FakeTailoredResumeGenerator):
     def generate(self, *, resume, job, job_page_text: str = "") -> str:
-        raise RuntimeError("Gemini API request timed out")
+        raise RuntimeError("Gemini API request failed: connection reset")
 
 
 class FakeResumePdfExporter:
@@ -58,6 +58,26 @@ class FakeResumePdfExporter:
         self.calls.append((markdown, output_path.name, job.id, resume.name))
         output_path.parent.mkdir(parents=True, exist_ok=True)
         output_path.write_bytes(b"%PDF-1.4\nfake resume pdf\n")
+
+
+class ImmediateThread:
+    def __init__(self, *, target, kwargs, daemon: bool = False) -> None:
+        self.target = target
+        self.kwargs = kwargs
+        self.daemon = daemon
+
+    def start(self) -> None:
+        self.target(**self.kwargs)
+
+
+class DeferredThread:
+    def __init__(self, *, target, kwargs, daemon: bool = False) -> None:
+        self.target = target
+        self.kwargs = kwargs
+        self.daemon = daemon
+
+    def start(self) -> None:
+        pass
 
 
 class FakeResumeNormalizationService:
@@ -701,6 +721,42 @@ class RoleRouteTest(unittest.TestCase):
             self.assertIn('data-loading-label="生成推薦信中"', response.text)
             self.assertIn("button-spinner", response.text)
 
+    def test_generate_job_output_shows_running_state_after_reload(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            workspace = Path(tmpdir) / "workspace"
+            RoleService(workspace).create_role("Walker")
+            client = self._client_for(workspace, openai_api_key="openai-key")
+            client.post(
+                "/roles/walker/resume/profile",
+                data={"name": "Walker Lin", "summary": "Frontend engineer"},
+            )
+            client.post(
+                "/roles/walker/jobs",
+                data={"job_url": "https://jobs.example.com/senior-frontend"},
+            )
+            jobs_path = workspace / "walker/jobs/jobs.json"
+            job_id = json.loads(jobs_path.read_text(encoding="utf-8"))["jobs"][0]["id"]
+
+            with patch("app.routes.roles.threading.Thread", DeferredThread):
+                response = client.post(
+                    f"/roles/walker/jobs/{job_id}/generate",
+                    data={"kind": "resume"},
+                    follow_redirects=False,
+                )
+
+            self.assertEqual(response.status_code, 303)
+            tasks = client.get("/roles/walker/generation-tasks")
+            self.assertEqual(tasks.status_code, 200)
+            task = tasks.json()["tasks"][0]
+            self.assertEqual(task["status"], "queued")
+            self.assertEqual(task["kind"], "resume")
+
+            page = client.get("/roles/walker")
+            self.assertEqual(page.status_code, 200)
+            self.assertIn("生成專用履歷中", page.text)
+            self.assertIn('data-generation-kind="resume"', page.text)
+            self.assertIn("disabled", page.text)
+
     def test_generate_job_output_route_writes_markdown(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             workspace = Path(tmpdir) / "workspace"
@@ -732,6 +788,7 @@ class RoleRouteTest(unittest.TestCase):
                     "app.routes.roles.PlaywrightResumePdfExporter",
                     FakeResumePdfExporter,
                 ),
+                patch("app.routes.roles.threading.Thread", ImmediateThread),
             ):
                 response = client.post(
                     f"/roles/walker/jobs/{job_id}/generate",
@@ -742,7 +799,7 @@ class RoleRouteTest(unittest.TestCase):
             self.assertEqual(response.status_code, 303)
             self.assertEqual(
                 response.headers["location"],
-                f"/roles/walker?generated_output=outputs/{job_id}-resume.md#jobs",
+                "/roles/walker#jobs",
             )
             self.assertTrue((workspace / f"walker/outputs/{job_id}-resume.md").is_file())
             self.assertTrue((workspace / f"walker/outputs/{job_id}-resume.pdf").is_file())
@@ -769,7 +826,17 @@ class RoleRouteTest(unittest.TestCase):
                     )
                 ],
             )
-            page = client.get(response.headers["location"])
+            tasks = client.get("/roles/walker/generation-tasks")
+            self.assertEqual(tasks.status_code, 200)
+            task = tasks.json()["tasks"][0]
+            self.assertEqual(task["status"], "completed")
+            self.assertEqual(task["kind"], "resume")
+            self.assertEqual(task["outputPath"], f"outputs/{job_id}-resume.md")
+            self.assertEqual(task["pdfPath"], f"outputs/{job_id}-resume.pdf")
+            self.assertEqual(task["viewUrl"], f"/roles/walker?generated_output=outputs/{job_id}-resume.md#jobs")
+            self.assertEqual(task["pdfUrl"], f"/roles/walker/outputs/{job_id}/resume.pdf")
+
+            page = client.get(f"/roles/walker?generated_output=outputs/{job_id}-resume.md#jobs")
             self.assertEqual(page.status_code, 200)
             self.assertIn("專用履歷草稿", page.text)
             self.assertIn("查看專用履歷", page.text)
@@ -814,6 +881,7 @@ class RoleRouteTest(unittest.TestCase):
                     "app.services.job_service._fetch_job_page_text",
                     return_value="Senior frontend role for a jobs platform using Angular.",
                 ),
+                patch("app.routes.roles.threading.Thread", ImmediateThread),
             ):
                 response = client.post(
                     f"/roles/walker/jobs/{job_id}/generate",
@@ -824,7 +892,7 @@ class RoleRouteTest(unittest.TestCase):
             self.assertEqual(response.status_code, 303)
             self.assertEqual(
                 response.headers["location"],
-                f"/roles/walker?generated_output=outputs/{job_id}-cover-letter.md#jobs",
+                "/roles/walker#jobs",
             )
             self.assertEqual(
                 FakeCoverLetterGenerator.calls,
@@ -838,7 +906,15 @@ class RoleRouteTest(unittest.TestCase):
                     )
                 ],
             )
-            page = client.get(response.headers["location"])
+            tasks = client.get("/roles/walker/generation-tasks")
+            self.assertEqual(tasks.status_code, 200)
+            task = tasks.json()["tasks"][0]
+            self.assertEqual(task["status"], "completed")
+            self.assertEqual(task["kind"], "cover-letter")
+            self.assertEqual(task["outputPath"], f"outputs/{job_id}-cover-letter.md")
+            self.assertEqual(task["viewUrl"], f"/roles/walker?generated_output=outputs/{job_id}-cover-letter.md#jobs")
+
+            page = client.get(f"/roles/walker?generated_output=outputs/{job_id}-cover-letter.md#jobs")
             self.assertEqual(page.status_code, 200)
             self.assertIn("針對 https://jobs.example.com/senior-frontend 申請此職缺", page.text)
             self.assertIn("Walker Lin", page.text)
@@ -862,15 +938,21 @@ class RoleRouteTest(unittest.TestCase):
             jobs_path = workspace / "walker/jobs/jobs.json"
             job_id = json.loads(jobs_path.read_text(encoding="utf-8"))["jobs"][0]["id"]
 
-            response = client.post(
-                f"/roles/walker/jobs/{job_id}/generate",
-                data={"kind": "cover_letter"},
-                follow_redirects=True,
-            )
+            with patch("app.routes.roles.threading.Thread", ImmediateThread):
+                response = client.post(
+                    f"/roles/walker/jobs/{job_id}/generate",
+                    data={"kind": "cover_letter"},
+                    follow_redirects=False,
+                )
 
-            self.assertEqual(response.status_code, 200)
-            self.assertIn("生成失敗", response.text)
-            self.assertIn("缺少 OPENAI_API_KEY 或 GEMINI_API_KEY", response.text)
+            self.assertEqual(response.status_code, 303)
+            self.assertEqual(response.headers["location"], "/roles/walker#jobs")
+            tasks = client.get("/roles/walker/generation-tasks")
+            self.assertEqual(tasks.status_code, 200)
+            task = tasks.json()["tasks"][0]
+            self.assertEqual(task["status"], "failed")
+            self.assertEqual(task["kind"], "cover-letter")
+            self.assertIn("缺少 OPENAI_API_KEY 或 GEMINI_API_KEY", task["error"])
 
     def test_generate_tailored_resume_without_api_key_shows_error(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -888,17 +970,23 @@ class RoleRouteTest(unittest.TestCase):
             jobs_path = workspace / "walker/jobs/jobs.json"
             job_id = json.loads(jobs_path.read_text(encoding="utf-8"))["jobs"][0]["id"]
 
-            response = client.post(
-                f"/roles/walker/jobs/{job_id}/generate",
-                data={"kind": "resume"},
-                follow_redirects=True,
-            )
+            with patch("app.routes.roles.threading.Thread", ImmediateThread):
+                response = client.post(
+                    f"/roles/walker/jobs/{job_id}/generate",
+                    data={"kind": "resume"},
+                    follow_redirects=False,
+                )
 
-            self.assertEqual(response.status_code, 200)
-            self.assertIn("生成失敗", response.text)
-            self.assertIn("缺少 OPENAI_API_KEY 或 GEMINI_API_KEY", response.text)
+            self.assertEqual(response.status_code, 303)
+            self.assertEqual(response.headers["location"], "/roles/walker#jobs")
+            tasks = client.get("/roles/walker/generation-tasks")
+            self.assertEqual(tasks.status_code, 200)
+            task = tasks.json()["tasks"][0]
+            self.assertEqual(task["status"], "failed")
+            self.assertEqual(task["kind"], "resume")
+            self.assertIn("缺少 OPENAI_API_KEY 或 GEMINI_API_KEY", task["error"])
 
-    def test_generate_tailored_resume_timeout_shows_error(self) -> None:
+    def test_generate_tailored_resume_api_failure_shows_error(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             workspace = Path(tmpdir) / "workspace"
             RoleService(workspace).create_role("Walker")
@@ -921,19 +1009,25 @@ class RoleRouteTest(unittest.TestCase):
             with (
                 patch(
                     "app.routes.roles.GeminiTailoredResumeGenerator",
-                    TimeoutTailoredResumeGenerator,
+                    FailingTailoredResumeGenerator,
                 ),
                 patch("app.services.job_service._fetch_job_page_text", return_value=""),
+                patch("app.routes.roles.threading.Thread", ImmediateThread),
             ):
                 response = client.post(
                     f"/roles/walker/jobs/{job_id}/generate",
                     data={"kind": "resume"},
-                    follow_redirects=True,
+                    follow_redirects=False,
                 )
 
-            self.assertEqual(response.status_code, 200)
-            self.assertIn("生成失敗", response.text)
-            self.assertIn("Gemini API request timed out", response.text)
+            self.assertEqual(response.status_code, 303)
+            self.assertEqual(response.headers["location"], "/roles/walker#jobs")
+            tasks = client.get("/roles/walker/generation-tasks")
+            self.assertEqual(tasks.status_code, 200)
+            task = tasks.json()["tasks"][0]
+            self.assertEqual(task["status"], "failed")
+            self.assertEqual(task["kind"], "resume")
+            self.assertIn("Gemini API request failed: connection reset", task["error"])
 
     def test_normalize_source_without_api_key_shows_message(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:

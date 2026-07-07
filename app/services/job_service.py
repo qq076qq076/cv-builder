@@ -206,4 +206,88 @@ def _fetch_job_page_text(url: str) -> str:
     result = fetch_url_text(url, timeout=10)
     if result.status != "completed":
         return ""
-    return re.sub(r"\s+", " ", result.text).strip()[:8000]
+    return _clean_job_page_text(result.text)
+
+
+def _clean_job_page_text(text: str, *, max_chars: int = 6000) -> str:
+    lines = _clean_job_page_lines(text)
+    lines = _slice_job_relevant_lines(lines)
+    return re.sub(r"\s+", " ", " ".join(lines)).strip()[:max_chars]
+
+
+def _clean_job_page_lines(text: str) -> list[str]:
+    seen: set[str] = set()
+    cleaned_lines: list[str] = []
+    for raw_line in text.splitlines():
+        line = re.sub(r"\s+", " ", raw_line).strip()
+        if not line:
+            continue
+        if _is_job_page_noise_line(line):
+            continue
+        normalized = line.casefold()
+        if normalized in seen:
+            continue
+        seen.add(normalized)
+        cleaned_lines.append(line)
+    return cleaned_lines
+
+
+def _slice_job_relevant_lines(lines: list[str]) -> list[str]:
+    if not lines:
+        return []
+
+    start_index = 0
+    for index, line in enumerate(lines):
+        if _is_job_content_start(line):
+            start_index = max(0, index - 3)
+            break
+
+    end_index = len(lines)
+    for index in range(start_index + 1, len(lines)):
+        if _is_job_content_end(lines[index]):
+            end_index = index
+            break
+
+    return lines[start_index:end_index]
+
+
+def _is_job_content_start(line: str) -> bool:
+    return bool(
+        re.search(
+            r"職務內容|工作內容|職缺描述|工作說明|職責|應徵條件|工作條件|資格條件|"
+            r"job description|about the job|responsibilit(?:y|ies)|requirements?|"
+            r"qualifications?|what you(?:'|’)ll do|what you will do",
+            line,
+            flags=re.IGNORECASE,
+        )
+    )
+
+
+def _is_job_content_end(line: str) -> bool:
+    return bool(
+        re.search(
+            r"相似職缺|推薦職缺|更多職缺|其他工作|看更多|應徵紀錄|公司福利|"
+            r"similar jobs|recommended jobs|more jobs|other jobs|related jobs|"
+            r"people also viewed|share this job|job alert|apply for another",
+            line,
+            flags=re.IGNORECASE,
+        )
+    )
+
+
+def _is_job_page_noise_line(line: str) -> bool:
+    if len(line) <= 1:
+        return True
+    if re.fullmatch(r"[\W_]+", line):
+        return True
+    return bool(
+        re.search(
+            r"登入|註冊|會員中心|收藏|分享|複製連結|檢舉|回報|隱私權|服務條款|"
+            r"cookie|cookies|privacy policy|terms of service|sign in|log in|register|"
+            r"create account|save job|share|copy link|report job|follow company|"
+            r"download app|app store|google play|facebook|instagram|linkedin|"
+            r"©|copyright|all rights reserved",
+            line,
+            flags=re.IGNORECASE,
+        )
+    )

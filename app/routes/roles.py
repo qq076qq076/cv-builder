@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import threading
 from dataclasses import dataclass
-from urllib.parse import quote, urlparse
+from pathlib import Path
+from urllib.parse import urlparse
 
 from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile, status
-from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
 from app.ai.cover_letter_generator import (
@@ -36,6 +38,7 @@ from app.services.resume_normalization_service import (
     ResumeNormalizationService,
 )
 from app.storage.evidence import EvidenceRepository
+from app.storage.generation_tasks import GenerationTask, GenerationTaskRepository
 from app.storage.resume import ResumeRepository
 
 router = APIRouter()
@@ -91,6 +94,7 @@ def role_detail(
     resume = ResumeRepository(role_path).load()
     job_service = JobService(role_path)
     sources = EvidenceRepository(role_path).list_sources().sources
+    generation_tasks = GenerationTaskRepository(role_path).latest_by_job()
     active_generated_output = (
         job_service.get_output_by_path(generated_output) if generated_output else None
     )
@@ -108,6 +112,7 @@ def role_detail(
             "source_icon_name": _source_icon_name,
             "jobs": job_service.list_jobs(),
             "job_outputs": job_service.list_outputs_by_job(),
+            "generation_tasks": generation_tasks,
             "generated_output": generated_output,
             "generated_error": generated_error,
             "active_generated_output": active_generated_output,
@@ -468,34 +473,39 @@ def generate_role_job_output(
     role = role_service.get_role(role_id)
     if role is not None:
         role_path = role_service.role_path(role_id)
-        try:
-            generated_output = JobService(role_path).generate_output(
-                job_id=job_id,
-                kind=kind,
-                resume=ResumeRepository(role_path).load(),
-                cover_letter_generator=_build_cover_letter_generator(
-                    role_path=role_path,
-                    settings=settings,
-                    kind=kind,
-                ),
-                tailored_resume_generator=_build_tailored_resume_generator(
-                    role_path=role_path,
-                    settings=settings,
-                    kind=kind,
-                ),
-                resume_pdf_exporter=_build_resume_pdf_exporter(kind=kind),
-            )
-        except RuntimeError as exc:
-            return RedirectResponse(
-                f"/roles/{role_id}?generated_error={quote(str(exc))}#jobs",
-                status_code=status.HTTP_303_SEE_OTHER,
-            )
-        if generated_output is not None:
-            return RedirectResponse(
-                f"/roles/{role_id}?generated_output={generated_output.path}#jobs",
-                status_code=status.HTTP_303_SEE_OTHER,
-            )
+        safe_kind = _safe_generation_kind(kind)
+        task = GenerationTaskRepository(role_path).create_task(job_id=job_id, kind=safe_kind)
+        thread = threading.Thread(
+            target=_run_generation_task,
+            kwargs={
+                "role_path": role_path,
+                "settings": settings,
+                "task": task,
+            },
+            daemon=True,
+        )
+        thread.start()
     return RedirectResponse(f"/roles/{role_id}#jobs", status_code=status.HTTP_303_SEE_OTHER)
+
+
+@router.get("/roles/{role_id}/generation-tasks")
+def list_generation_tasks(role_id: str) -> JSONResponse:
+    settings = get_settings()
+    role_service = RoleService(settings.workspace_path)
+    role = role_service.get_role(role_id)
+    if role is None:
+        raise HTTPException(status_code=404, detail="Role not found")
+
+    role_path = role_service.role_path(role_id)
+    tasks = GenerationTaskRepository(role_path).list_tasks()
+    return JSONResponse(
+        {
+            "tasks": [
+                _generation_task_payload(task=task, role_id=role_id)
+                for task in tasks
+            ]
+        }
+    )
 
 
 @router.post("/roles/{role_id}/sources/{source_id}/normalize", response_class=HTMLResponse)
@@ -608,6 +618,7 @@ def _render_role_detail(
     resume = ResumeRepository(role_path).load()
     job_service = JobService(role_path)
     sources = EvidenceRepository(role_path).list_sources().sources
+    generation_tasks = GenerationTaskRepository(role_path).latest_by_job()
     return templates.TemplateResponse(
         request,
         "role_detail.html",
@@ -622,6 +633,7 @@ def _render_role_detail(
             "source_icon_name": _source_icon_name,
             "jobs": job_service.list_jobs(),
             "job_outputs": job_service.list_outputs_by_job(),
+            "generation_tasks": generation_tasks,
             "generated_output": None,
             "generated_error": None,
             "active_generated_output": None,
@@ -681,6 +693,62 @@ def _build_resume_pdf_exporter(*, kind: str) -> ResumePdfExporter | None:
     if kind != "resume":
         return None
     return PlaywrightResumePdfExporter()
+
+
+def _run_generation_task(*, role_path: Path, settings, task: GenerationTask) -> None:
+    repository = GenerationTaskRepository(role_path)
+    repository.mark_running(task.id)
+    try:
+        generated_output = JobService(role_path).generate_output(
+            job_id=task.job_id,
+            kind="cover_letter" if task.kind == "cover-letter" else task.kind,
+            resume=ResumeRepository(role_path).load(),
+            cover_letter_generator=_build_cover_letter_generator(
+                role_path=role_path,
+                settings=settings,
+                kind="cover_letter" if task.kind == "cover-letter" else task.kind,
+            ),
+            tailored_resume_generator=_build_tailored_resume_generator(
+                role_path=role_path,
+                settings=settings,
+                kind=task.kind,
+            ),
+            resume_pdf_exporter=_build_resume_pdf_exporter(kind=task.kind),
+        )
+    except RuntimeError as exc:
+        repository.mark_failed(task.id, error=str(exc))
+        return
+    except Exception as exc:
+        repository.mark_failed(task.id, error=f"生成失敗：{exc}")
+        return
+
+    if generated_output is None:
+        repository.mark_failed(task.id, error="找不到職缺，無法生成輸出")
+        return
+
+    repository.mark_completed(
+        task.id,
+        output_path=generated_output.path,
+        pdf_path=generated_output.pdf_path or "",
+    )
+
+
+def _safe_generation_kind(kind: str) -> str:
+    return "cover-letter" if kind in {"cover_letter", "cover-letter"} else "resume"
+
+
+def _generation_task_payload(*, task: GenerationTask, role_id: str) -> dict[str, str]:
+    payload = task.to_dict()
+    payload["label"] = "推薦信" if task.kind == "cover-letter" else "專用履歷"
+    if task.output_path:
+        payload["viewUrl"] = f"/roles/{role_id}?generated_output={task.output_path}#jobs"
+    else:
+        payload["viewUrl"] = ""
+    if task.kind == "resume" and task.pdf_path:
+        payload["pdfUrl"] = f"/roles/{role_id}/outputs/{task.job_id}/resume.pdf"
+    else:
+        payload["pdfUrl"] = ""
+    return payload
 
 
 def _has_profile_content(profile: RoleProfile) -> bool:

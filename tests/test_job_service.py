@@ -1,14 +1,14 @@
-import tempfile
 import unittest
+import tempfile
 from contextlib import redirect_stdout
 from io import StringIO
 from pathlib import Path
 from unittest.mock import patch
 
-from app.ai.cover_letter_generator import build_cover_letter_prompt
+from app.ai.cover_letter_generator import GeminiCoverLetterGenerator, build_cover_letter_prompt
 from app.ai.tailored_resume_generator import GeminiTailoredResumeGenerator, build_tailored_resume_prompt
 from app.schemas.resume import NormalizedResume
-from app.services.job_service import JobService, _fetch_job_page_text
+from app.services.job_service import JobService, _clean_job_page_text, _fetch_job_page_text
 from app.services.url_fetcher import UrlFetchResult
 
 
@@ -35,6 +35,17 @@ class FakeResumePdfExporter:
         self.calls.append((markdown, output_path.name, job.id, resume.name))
         output_path.parent.mkdir(parents=True, exist_ok=True)
         output_path.write_bytes(b"%PDF-1.4\nfake resume pdf\n")
+
+
+class FakeGeminiResponse:
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc, traceback) -> None:
+        pass
+
+    def read(self) -> bytes:
+        return b'{"output_text": "Generated content"}'
 
 
 class JobServiceTest(unittest.TestCase):
@@ -210,25 +221,43 @@ class JobServiceTest(unittest.TestCase):
             self.assertIn("Company builds retail SaaS", prompt)
             self.assertIn("Angular", prompt)
 
-    def test_gemini_tailored_resume_timeout_raises_runtime_error(self) -> None:
+    def test_gemini_generators_do_not_set_request_timeout(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             service = JobService(Path(tmpdir) / "workspace/walker")
             job = service.create_job_from_url("https://jobs.example.com/frontend")
-            generator = GeminiTailoredResumeGenerator(api_key="test-key", model="test-model")
+            resume = NormalizedResume(name="Walker Lin")
 
             with (
                 patch(
                     "app.ai.tailored_resume_generator.request.urlopen",
-                    side_effect=TimeoutError("The read operation timed out"),
-                ),
+                    return_value=FakeGeminiResponse(),
+                ) as urlopen,
                 redirect_stdout(StringIO()),
-                self.assertRaisesRegex(RuntimeError, "Gemini API request timed out"),
             ):
-                generator.generate(
-                    resume=NormalizedResume(name="Walker Lin"),
+                content = GeminiTailoredResumeGenerator(api_key="test-key", model="test-model").generate(
+                    resume=resume,
                     job=job,
                     job_page_text="Frontend role using Angular.",
                 )
+
+            self.assertEqual(content, "Generated content")
+            self.assertNotIn("timeout", urlopen.call_args.kwargs)
+
+            with (
+                patch(
+                    "app.ai.cover_letter_generator.request.urlopen",
+                    return_value=FakeGeminiResponse(),
+                ) as urlopen,
+                redirect_stdout(StringIO()),
+            ):
+                content = GeminiCoverLetterGenerator(api_key="test-key", model="test-model").generate(
+                    resume=resume,
+                    job=job,
+                    job_page_text="Frontend role using Angular.",
+                )
+
+            self.assertEqual(content, "Generated content")
+            self.assertNotIn("timeout", urlopen.call_args.kwargs)
 
     def test_fetch_job_page_text_uses_shared_url_fetcher(self) -> None:
         with patch(
@@ -256,6 +285,55 @@ class JobServiceTest(unittest.TestCase):
             text = _fetch_job_page_text("https://jobs.example.com/frontend")
 
         self.assertEqual(text, "")
+
+    def test_clean_job_page_text_removes_navigation_and_related_jobs_noise(self) -> None:
+        raw_text = """
+        登入
+        註冊
+        分享
+        Senior Frontend Engineer
+        ACME SaaS
+        職務內容
+        Build React and TypeScript products for merchant dashboards.
+        Responsibilities
+        Own frontend architecture and collaborate with backend engineers.
+        Requirements
+        React
+        TypeScript
+        GitLab CI/CD
+        相似職缺
+        Backend Engineer
+        推薦職缺
+        Privacy Policy
+        Copyright 2026
+        """
+
+        cleaned = _clean_job_page_text(raw_text)
+
+        self.assertIn("Senior Frontend Engineer", cleaned)
+        self.assertIn("Build React and TypeScript products", cleaned)
+        self.assertIn("Own frontend architecture", cleaned)
+        self.assertIn("GitLab CI/CD", cleaned)
+        self.assertNotIn("登入", cleaned)
+        self.assertNotIn("分享", cleaned)
+        self.assertNotIn("Backend Engineer", cleaned)
+        self.assertNotIn("Privacy Policy", cleaned)
+
+    def test_clean_job_page_text_deduplicates_lines_and_limits_length(self) -> None:
+        raw_text = "\n".join(
+            [
+                "職務內容",
+                "Python backend API development",
+                "Python backend API development",
+                "Requirements",
+                "FastAPI " * 2000,
+            ]
+        )
+
+        cleaned = _clean_job_page_text(raw_text, max_chars=200)
+
+        self.assertEqual(cleaned.count("Python backend API development"), 1)
+        self.assertLessEqual(len(cleaned), 200)
 
 
 if __name__ == "__main__":
