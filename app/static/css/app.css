@@ -1557,6 +1557,14 @@ textarea {
   font-size: 18px;
 }
 
+.job-match-score-pending {
+  color: var(--color-muted);
+}
+
+.job-match-score-failed {
+  color: #ff9a9a;
+}
+
 .modal-regenerate-form {
   margin-left: auto;
 }

@@ -658,7 +658,13 @@
               <div class="job-item-main">
                 <h3><a class="job-title-link" href="{{ job.url }}" target="_blank" rel="noopener noreferrer">{{ job.title }}</a></h3>
                 <p>{{ job.company }}</p>
-                {% if job.match_score is not none %}<div class="job-match-score">職缺吻合度 <strong>{{ job.match_score }}%</strong></div>{% endif %}
+                {% if job.match_score is not none %}
+                  <div class="job-match-score">職缺吻合度 <strong>{{ job.match_score }}%</strong></div>
+                {% elif job.match_status in ["pending", "running"] %}
+                  <div class="job-match-score job-match-score-pending">職缺吻合度分析中…</div>
+                {% elif job.match_status == "failed" %}
+                  <div class="job-match-score job-match-score-failed" title="{{ job.match_error }}">職缺吻合度分析失敗</div>
+                {% endif %}
               </div>
               <span class="job-status">觀察中</span>
               <div class="job-actions">
@@ -1158,6 +1164,26 @@
     };
 
     pollGenerationTasks();
+
+    const pollJobAnalysis = async () => {
+      const pendingAnalysis = document.querySelector('.job-match-score-pending');
+      if (!pendingAnalysis) return;
+      try {
+        const response = await fetch(`/roles/${roleId}/jobs/status`, {headers: {"Accept": "application/json"}});
+        if (!response.ok) return;
+        const data = await response.json();
+        const hasPending = (data.jobs || []).some((job) => ["pending", "running"].includes(job.matchStatus));
+        if (!hasPending) {
+          window.location.reload();
+          return;
+        }
+      } catch (_error) {
+        // The next poll retries while the analysis is still pending.
+      }
+      window.setTimeout(pollJobAnalysis, 2500);
+    };
+
+    pollJobAnalysis();
 
     document.querySelectorAll("[data-loading-form]").forEach((form) => {
       if (form.dataset.backgroundGenerate !== undefined) {

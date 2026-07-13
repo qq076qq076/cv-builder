@@ -461,16 +461,14 @@ def create_role_job(role_id: str, job_url: str = Form(...)) -> RedirectResponse:
     if role is not None:
         role_path = role_service.role_path(role_id)
         service = JobService(role_path)
-        resume = ResumeRepository(role_path).load()
-        page_text = _fetch_job_page_text(job_url) if (settings.openai_api_key or settings.gemini_api_key) else ""
-        job = service.create_job_from_url(job_url, description=page_text)
         insights = _build_job_insights_generator(role_path=role_path, settings=settings)
+        job = service.create_job_from_url(
+            job_url,
+            match_status="pending" if insights is not None else "unavailable",
+            match_error="" if insights is not None else "未設定 AI API key",
+        )
         if insights is not None:
-            try:
-                result = insights.evaluate(resume=resume, job=job, job_page_text=page_text)
-                service.update_job(job.model_copy(update={"match_score": result["score"]}))
-            except Exception:
-                pass
+            _start_job_analysis(role_path=role_path, settings=settings, job_id=job.id)
     return RedirectResponse(f"/roles/{role_id}#jobs", status_code=status.HTTP_303_SEE_OTHER)
 
 
@@ -481,6 +479,28 @@ def delete_role_job(role_id: str, job_id: str) -> RedirectResponse:
     if role_service.get_role(role_id) is not None:
         JobService(role_service.role_path(role_id)).remove_job(job_id)
     return RedirectResponse(f"/roles/{role_id}#jobs", status_code=status.HTTP_303_SEE_OTHER)
+
+
+@router.get("/roles/{role_id}/jobs/status")
+def list_role_job_status(role_id: str) -> JSONResponse:
+    settings = get_settings()
+    role_service = RoleService(settings.workspace_path)
+    if role_service.get_role(role_id) is None:
+        raise HTTPException(status_code=404, detail="Role not found")
+    jobs = JobService(role_service.role_path(role_id)).list_jobs()
+    return JSONResponse(
+        {
+            "jobs": [
+                {
+                    "id": job.id,
+                    "matchScore": job.match_score,
+                    "matchStatus": job.match_status,
+                    "matchError": job.match_error,
+                }
+                for job in jobs
+            ]
+        }
+    )
 
 
 @router.post("/roles/{role_id}/jobs/{job_id}/generate")
@@ -760,6 +780,58 @@ def _build_job_insights_generator(*, role_path, settings):
     if settings.gemini_api_key:
         return GeminiJobInsightsGenerator(api_key=settings.gemini_api_key, model=settings.gemini_model, log_path=role_path / "logs/ai-job-insights.jsonl")
     return None
+
+
+def _run_job_analysis(*, role_path: Path, settings, job_id: str) -> None:
+    service = JobService(role_path)
+    job = service.get_job(job_id)
+    if job is None:
+        return
+    service.update_job(job.model_copy(update={"match_status": "running", "match_error": ""}))
+    try:
+        page_text = _fetch_job_page_text(job.url)
+        job = service.get_job(job_id)
+        if job is None:
+            return
+        insights = _build_job_insights_generator(role_path=role_path, settings=settings)
+        if insights is None:
+            service.update_job(job.model_copy(update={"match_status": "unavailable", "match_error": "未設定 AI API key"}))
+            return
+        result = insights.evaluate(
+            resume=ResumeRepository(role_path).load(),
+            job=job.model_copy(update={"description": page_text}),
+            job_page_text=page_text,
+        )
+        service.update_job(
+            job.model_copy(
+                update={
+                    "description": page_text,
+                    "match_score": result["score"],
+                    "match_status": "completed",
+                    "match_error": "",
+                }
+            )
+        )
+    except Exception as exc:
+        current_job = service.get_job(job_id)
+        if current_job is not None:
+            service.update_job(
+                current_job.model_copy(
+                    update={
+                        "match_status": "failed",
+                        "match_error": f"分析失敗：{exc}",
+                    }
+                )
+            )
+
+
+def _start_job_analysis(*, role_path: Path, settings, job_id: str) -> None:
+    thread = threading.Thread(
+        target=_run_job_analysis,
+        kwargs={"role_path": role_path, "settings": settings, "job_id": job_id},
+        daemon=True,
+    )
+    thread.start()
 
 
 def _build_resume_pdf_exporter(*, kind: str) -> ResumePdfExporter | None:
