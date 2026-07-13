@@ -647,6 +647,7 @@
             {% set job_output = job_outputs.get(job.id, {}) %}
             {% set resume_output = job_output.get("resume") %}
             {% set cover_letter_output = job_output.get("cover-letter") %}
+            {% set suggestions_output = job_output.get("suggestions") %}
             {% set job_tasks = generation_tasks.get(job.id, {}) %}
             {% set resume_task = job_tasks.get("resume") %}
             {% set cover_letter_task = job_tasks.get("cover-letter") %}
@@ -655,28 +656,24 @@
             <article class="job-item">
               <div class="job-company-badge">{{ job.company[:1]|upper if job.company else "J" }}</div>
               <div class="job-item-main">
-                <h3>{{ job.title }}</h3>
-                <p>{{ job.company }} // {{ job.url }}</p>
+                <h3><a class="job-title-link" href="{{ job.url }}" target="_blank" rel="noopener noreferrer">{{ job.title }}</a></h3>
+                <p>{{ job.company }}</p>
+                {% if job.match_score is not none %}<div class="job-match-score">職缺吻合度 <strong>{{ job.match_score }}%</strong></div>{% endif %}
               </div>
               <span class="job-status">觀察中</span>
               <div class="job-actions">
-                <form class="{% if resume_running %}is-submitting{% endif %}" method="post" action="/roles/{{ role.id }}/jobs/{{ job.id }}/generate" data-loading-form data-background-generate data-job-id="{{ job.id }}" data-generation-kind="resume" data-cancel-action="/roles/{{ role.id }}/jobs/{{ job.id }}/generation-tasks/cancel">
-                  <input name="kind" type="hidden" value="resume">
-                  {{ loading_button("生成專用履歷中" if resume_running else "重新生成專用履歷" if resume_output else "生成專用履歷", "生成專用履歷中，點擊取消", "app-button-secondary") }}
-                </form>
-                <form class="{% if cover_letter_running %}is-submitting{% endif %}" method="post" action="/roles/{{ role.id }}/jobs/{{ job.id }}/generate" data-loading-form data-background-generate data-job-id="{{ job.id }}" data-generation-kind="cover-letter" data-cancel-action="/roles/{{ role.id }}/jobs/{{ job.id }}/generation-tasks/cancel">
-                  <input name="kind" type="hidden" value="cover_letter">
-                  {{ loading_button("生成推薦信中" if cover_letter_running else "重新生成推薦信" if cover_letter_output else "生成推薦信", "生成推薦信中，點擊取消", "app-button-secondary") }}
-                </form>
-                {% if resume_output %}
-                  <a class="app-button app-button-secondary" href="/roles/{{ role.id }}?generated_output={{ resume_output.path }}#jobs">查看專用履歷</a>
-                  {% if resume_output.pdf_path %}
-                    <a class="app-button app-button-secondary" href="/roles/{{ role.id }}/outputs/{{ job.id }}/resume.pdf">下載 PDF</a>
-                  {% endif %}
+                {% if resume_output %}<a class="app-button app-button-secondary" title="查看專用履歷；重新生成專用履歷" href="/roles/{{ role.id }}?generated_output={{ resume_output.path }}#jobs">履歷</a><span hidden data-loading-label="生成專用履歷中，點擊取消"></span>{% else %}
+                  <form class="{% if resume_running %}is-submitting{% endif %}" method="post" action="/roles/{{ role.id }}/jobs/{{ job.id }}/generate" data-loading-form data-background-generate data-job-id="{{ job.id }}" data-generation-kind="resume" data-cancel-action="/roles/{{ role.id }}/jobs/{{ job.id }}/generation-tasks/cancel"><input name="kind" type="hidden" value="resume">{{ loading_button("履歷", "生成專用履歷中，點擊取消", "app-button-secondary") }}</form>
                 {% endif %}
-                {% if cover_letter_output %}
-                  <a class="app-button app-button-secondary" href="/roles/{{ role.id }}?generated_output={{ cover_letter_output.path }}#jobs">查看推薦信</a>
+                {% if cover_letter_output %}<a class="app-button app-button-secondary" title="查看推薦信；重新生成推薦信" href="/roles/{{ role.id }}?generated_output={{ cover_letter_output.path }}#jobs">推薦信</a><span hidden data-loading-label="生成推薦信中，點擊取消"></span>{% else %}
+                  <form class="{% if cover_letter_running %}is-submitting{% endif %}" method="post" action="/roles/{{ role.id }}/jobs/{{ job.id }}/generate" data-loading-form data-background-generate data-job-id="{{ job.id }}" data-generation-kind="cover-letter" data-cancel-action="/roles/{{ role.id }}/jobs/{{ job.id }}/generation-tasks/cancel"><input name="kind" type="hidden" value="cover_letter">{{ loading_button("推薦信", "生成推薦信中，點擊取消", "app-button-secondary") }}</form>
                 {% endif %}
+                {% if suggestions_output %}<a class="app-button app-button-secondary" href="/roles/{{ role.id }}?generated_output={{ suggestions_output.path }}#jobs">建議</a>{% else %}
+                  <form method="post" action="/roles/{{ role.id }}/jobs/{{ job.id }}/generate" data-loading-form data-background-generate data-job-id="{{ job.id }}" data-generation-kind="suggestions" data-cancel-action="/roles/{{ role.id }}/jobs/{{ job.id }}/generation-tasks/cancel"><input name="kind" type="hidden" value="suggestions">{{ loading_button("建議", "產生建議中，點擊取消", "app-button-secondary") }}</form>
+                {% endif %}
+                <form method="post" action="/roles/{{ role.id }}/jobs/{{ job.id }}/delete" onsubmit="return window.confirm('確定要移除此職缺？');">
+                  <button class="app-button app-button-danger" type="submit">移除</button>
+                </form>
               </div>
             </article>
           {% else %}
@@ -692,9 +689,15 @@
               <div>
                 <p class="app-kicker">Generated Output</p>
                 <h2 id="generated-output-title">
-                  {% if active_generated_output.kind == "cover-letter" %}推薦信草稿{% else %}專用履歷草稿{% endif %}
+                  {% if active_generated_output.kind == "cover-letter" %}推薦信草稿{% elif active_generated_output.kind == "suggestions" %}職缺建議{% else %}專用履歷草稿{% endif %}
                 </h2>
               </div>
+              {% if active_generated_output.job_id %}
+              <form class="modal-regenerate-form" method="post" action="/roles/{{ role.id }}/jobs/{{ active_generated_output.job_id }}/generate" data-loading-form data-background-generate data-job-id="{{ active_generated_output.job_id }}" data-generation-kind="{{ active_generated_output.kind }}" data-cancel-action="/roles/{{ role.id }}/jobs/{{ active_generated_output.job_id }}/generation-tasks/cancel">
+                <input name="kind" type="hidden" value="{{ 'cover_letter' if active_generated_output.kind == 'cover-letter' else active_generated_output.kind }}">
+                {{ loading_button("重新生成", "重新生成中，點擊取消", "app-button-primary") }}
+              </form>
+              {% endif %}
               <a class="app-modal-close" href="/roles/{{ role.id }}#jobs" aria-label="關閉 popup">
                 <span class="material-symbols-outlined">close</span>
               </a>
@@ -1122,6 +1125,9 @@
           notifiedTaskIds.add(task.id);
           saveNotifiedTaskIds();
           addGenerationToast(task);
+          if (task.status === "completed" && task.viewUrl && form?.closest(".app-modal")) {
+            window.location.href = task.viewUrl;
+          }
         }
       });
       clientActiveTaskKeys.forEach((key) => {

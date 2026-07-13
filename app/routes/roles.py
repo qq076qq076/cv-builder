@@ -19,6 +19,7 @@ from app.ai.tailored_resume_generator import (
     OpenAITailoredResumeGenerator,
     TailoredResumeGenerator,
 )
+from app.ai.job_insights_generator import GeminiJobInsightsGenerator, OpenAIJobInsightsGenerator
 from app.config import get_settings
 from app.schemas.role import RoleProfile
 from app.schemas.resume import (
@@ -30,7 +31,7 @@ from app.schemas.resume import (
     ResumeProject,
 )
 from app.services.import_service import ImportService
-from app.services.job_service import JobService
+from app.services.job_service import JobService, _fetch_job_page_text
 from app.services.pdf_export_service import PlaywrightResumePdfExporter, ResumePdfExporter
 from app.services.role_service import RoleService
 from app.services.resume_normalization_service import (
@@ -458,7 +459,27 @@ def create_role_job(role_id: str, job_url: str = Form(...)) -> RedirectResponse:
     role_service = RoleService(settings.workspace_path)
     role = role_service.get_role(role_id)
     if role is not None:
-        JobService(role_service.role_path(role_id)).create_job_from_url(job_url)
+        role_path = role_service.role_path(role_id)
+        service = JobService(role_path)
+        resume = ResumeRepository(role_path).load()
+        page_text = _fetch_job_page_text(job_url) if (settings.openai_api_key or settings.gemini_api_key) else ""
+        job = service.create_job_from_url(job_url, description=page_text)
+        insights = _build_job_insights_generator(role_path=role_path, settings=settings)
+        if insights is not None:
+            try:
+                result = insights.evaluate(resume=resume, job=job, job_page_text=page_text)
+                service.update_job(job.model_copy(update={"match_score": result["score"]}))
+            except Exception:
+                pass
+    return RedirectResponse(f"/roles/{role_id}#jobs", status_code=status.HTTP_303_SEE_OTHER)
+
+
+@router.post("/roles/{role_id}/jobs/{job_id}/delete")
+def delete_role_job(role_id: str, job_id: str) -> RedirectResponse:
+    settings = get_settings()
+    role_service = RoleService(settings.workspace_path)
+    if role_service.get_role(role_id) is not None:
+        JobService(role_service.role_path(role_id)).remove_job(job_id)
     return RedirectResponse(f"/roles/{role_id}#jobs", status_code=status.HTTP_303_SEE_OTHER)
 
 
@@ -733,6 +754,14 @@ def _build_tailored_resume_generator(
     raise RuntimeError("缺少 OPENAI_API_KEY 或 GEMINI_API_KEY，無法生成專用履歷")
 
 
+def _build_job_insights_generator(*, role_path, settings):
+    if settings.openai_api_key:
+        return OpenAIJobInsightsGenerator(api_key=settings.openai_api_key, model=settings.openai_model, log_path=role_path / "logs/ai-job-insights.jsonl")
+    if settings.gemini_api_key:
+        return GeminiJobInsightsGenerator(api_key=settings.gemini_api_key, model=settings.gemini_model, log_path=role_path / "logs/ai-job-insights.jsonl")
+    return None
+
+
 def _build_resume_pdf_exporter(*, kind: str) -> ResumePdfExporter | None:
     if kind != "resume":
         return None
@@ -762,6 +791,7 @@ def _run_generation_task(*, role_path: Path, settings, task: GenerationTask) -> 
                 kind=task.kind,
             ),
             resume_pdf_exporter=_build_resume_pdf_exporter(kind=task.kind),
+            insights_generator=_build_job_insights_generator(role_path=role_path, settings=settings),
         )
     except RuntimeError as exc:
         repository.mark_failed(task.id, error=str(exc))
@@ -808,12 +838,16 @@ def _is_generation_task_cancelled(repository: GenerationTaskRepository, task_id:
 
 
 def _safe_generation_kind(kind: str) -> str:
-    return "cover-letter" if kind in {"cover_letter", "cover-letter"} else "resume"
+    if kind in {"cover_letter", "cover-letter"}:
+        return "cover-letter"
+    if kind in {"suggestion", "suggestions"}:
+        return "suggestions"
+    return "resume"
 
 
 def _generation_task_payload(*, task: GenerationTask, role_id: str) -> dict[str, str]:
     payload = task.to_dict()
-    payload["label"] = "推薦信" if task.kind == "cover-letter" else "專用履歷"
+    payload["label"] = {"cover-letter": "推薦信", "suggestions": "建議", "resume": "履歷"}.get(task.kind, task.kind)
     if task.output_path:
         payload["viewUrl"] = f"/roles/{role_id}?generated_output={task.output_path}#jobs"
     else:

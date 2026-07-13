@@ -12,6 +12,7 @@ class TrackedJob(BaseModel):
     company: str = ""
     url: str = ""
     description: str = ""
+    match_score: int | None = Field(default=None, alias="matchScore")
     status: str = "tracking"
     created_at: datetime = Field(alias="createdAt")
 

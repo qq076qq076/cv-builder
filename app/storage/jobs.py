@@ -34,3 +34,14 @@ class JobRepository:
             if job.id == job_id:
                 return job
         return None
+
+    def remove_job(self, job_id: str) -> bool:
+        collection = self.list_jobs()
+        updated_jobs = [job for job in collection.jobs if job.id != job_id]
+        if len(updated_jobs) == len(collection.jobs):
+            return False
+        atomic_write_json(
+            self.jobs_path,
+            TrackedJobCollection(jobs=updated_jobs).model_dump(mode="json", by_alias=True),
+        )
+        return True
