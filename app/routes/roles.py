@@ -472,20 +472,40 @@ def generate_role_job_output(
     role_service = RoleService(settings.workspace_path)
     role = role_service.get_role(role_id)
     if role is not None:
-        role_path = role_service.role_path(role_id)
-        safe_kind = _safe_generation_kind(kind)
-        task = GenerationTaskRepository(role_path).create_task(job_id=job_id, kind=safe_kind)
-        thread = threading.Thread(
-            target=_run_generation_task,
-            kwargs={
-                "role_path": role_path,
-                "settings": settings,
-                "task": task,
-            },
-            daemon=True,
+        _start_generation_task(
+            role_path=role_service.role_path(role_id),
+            settings=settings,
+            job_id=job_id,
+            kind=kind,
         )
-        thread.start()
     return RedirectResponse(f"/roles/{role_id}#jobs", status_code=status.HTTP_303_SEE_OTHER)
+
+
+@router.post(
+    "/roles/{role_id}/jobs/{job_id}/generation-tasks",
+    status_code=status.HTTP_202_ACCEPTED,
+)
+def create_generation_task(
+    role_id: str,
+    job_id: str,
+    kind: str = Form(...),
+) -> JSONResponse:
+    settings = get_settings()
+    role_service = RoleService(settings.workspace_path)
+    role = role_service.get_role(role_id)
+    if role is None:
+        raise HTTPException(status_code=404, detail="Role not found")
+
+    task = _start_generation_task(
+        role_path=role_service.role_path(role_id),
+        settings=settings,
+        job_id=job_id,
+        kind=kind,
+    )
+    return JSONResponse(
+        status_code=status.HTTP_202_ACCEPTED,
+        content={"task": _generation_task_payload(task=task, role_id=role_id)},
+    )
 
 
 @router.get("/roles/{role_id}/generation-tasks")
@@ -762,6 +782,24 @@ def _run_generation_task(*, role_path: Path, settings, task: GenerationTask) -> 
         output_path=generated_output.path,
         pdf_path=generated_output.pdf_path or "",
     )
+
+
+def _start_generation_task(*, role_path: Path, settings, job_id: str, kind: str) -> GenerationTask:
+    task = GenerationTaskRepository(role_path).create_task(
+        job_id=job_id,
+        kind=_safe_generation_kind(kind),
+    )
+    thread = threading.Thread(
+        target=_run_generation_task,
+        kwargs={
+            "role_path": role_path,
+            "settings": settings,
+            "task": task,
+        },
+        daemon=True,
+    )
+    thread.start()
+    return task
 
 
 def _is_generation_task_cancelled(repository: GenerationTaskRepository, task_id: str) -> bool:

@@ -139,6 +139,16 @@ http://127.0.0.1:8000/health
 6. 點擊「生成專用履歷」或「生成推薦信」，系統會抓取職缺頁文字並交給 AI 產生客製化 Markdown 草稿；專用履歷會同步輸出 PDF。
 7. 生成後可在同一張職缺卡片點擊「查看專用履歷」、「下載 PDF」或「查看推薦信」檢視輸出內容。
 
+## JSON API
+
+目前頁面仍由 FastAPI 與 Jinja server-side rendering 提供；長時間執行的生成任務已提供 JSON API，讓未來的獨立前端或其他客戶端可以共用同一個任務合約。
+
+- `POST /roles/{role_id}/jobs/{job_id}/generation-tasks`：以 `multipart/form-data` 送出 `kind=resume` 或 `kind=cover_letter`，回傳 `202 Accepted` 與排入佇列的 `task`。
+- `GET /roles/{role_id}/generation-tasks`：取得角色下全部生成任務。
+- `POST /roles/{role_id}/jobs/{job_id}/generation-tasks/cancel`：以 `multipart/form-data` 送出 `kind`，取消進行中的同類任務。
+
+舊的 `POST /roles/{role_id}/jobs/{job_id}/generate` 仍保留給 HTML 表單使用，並維持 redirect 行為。
+
 ## URL 抓取注意事項
 
 LinkedIn、104、Cake、Yourator 這類 profile 或職缺 URL 會使用 Playwright 開啟 Chromium，等待 JavaScript render 後再抓取頁面文字。若出現 timeout 或抓不到資料，優先檢查：

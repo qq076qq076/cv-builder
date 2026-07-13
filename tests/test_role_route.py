@@ -773,6 +773,35 @@ class RoleRouteTest(unittest.TestCase):
             self.assertEqual(tasks.status_code, 200)
             self.assertEqual(tasks.json()["tasks"][0]["status"], "cancelled")
 
+    def test_create_generation_task_api_returns_queued_task(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            workspace = Path(tmpdir) / "workspace"
+            RoleService(workspace).create_role("Walker")
+            client = self._client_for(workspace, openai_api_key="openai-key")
+            client.post(
+                "/roles/walker/jobs",
+                data={"job_url": "https://jobs.example.com/senior-frontend"},
+            )
+            jobs_path = workspace / "walker/jobs/jobs.json"
+            job_id = json.loads(jobs_path.read_text(encoding="utf-8"))["jobs"][0]["id"]
+
+            with patch("app.routes.roles.threading.Thread", DeferredThread):
+                response = client.post(
+                    f"/roles/walker/jobs/{job_id}/generation-tasks",
+                    data={"kind": "cover_letter"},
+                )
+
+            self.assertEqual(response.status_code, 202)
+            task = response.json()["task"]
+            self.assertEqual(task["jobId"], job_id)
+            self.assertEqual(task["kind"], "cover-letter")
+            self.assertEqual(task["status"], "queued")
+            self.assertEqual(task["label"], "推薦信")
+
+            tasks = client.get("/roles/walker/generation-tasks")
+            self.assertEqual(tasks.status_code, 200)
+            self.assertEqual(tasks.json()["tasks"], [task])
+
     def test_generate_job_output_route_writes_markdown(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             workspace = Path(tmpdir) / "workspace"
