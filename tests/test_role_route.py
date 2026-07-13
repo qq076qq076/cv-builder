@@ -700,6 +700,46 @@ class RoleRouteTest(unittest.TestCase):
             self.assertEqual(response.headers["location"], "/roles/walker#jobs")
             self.assertTrue((workspace / "walker/jobs/jobs.json").is_file())
 
+    def test_create_job_route_starts_background_match_analysis(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            workspace = Path(tmpdir) / "workspace"
+            RoleService(workspace).create_role("Walker")
+            client = self._client_for(workspace, openai_api_key="openai-key")
+
+            with patch("app.routes.roles._start_job_analysis") as start_analysis:
+                response = client.post(
+                    "/roles/walker/jobs",
+                    data={"job_url": "https://jobs.example.com/senior-frontend"},
+                    follow_redirects=False,
+                )
+
+            self.assertEqual(response.status_code, 303)
+            job = json.loads((workspace / "walker/jobs/jobs.json").read_text(encoding="utf-8"))["jobs"][0]
+            self.assertEqual(job["matchStatus"], "pending")
+            self.assertEqual(job["matchScore"], None)
+            start_analysis.assert_called_once()
+
+    def test_delete_job_route_removes_job_outputs_and_task_records(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            workspace = Path(tmpdir) / "workspace"
+            RoleService(workspace).create_role("Walker")
+            client = self._client_for(workspace, openai_api_key="")
+            client.post(
+                "/roles/walker/jobs",
+                data={"job_url": "https://jobs.example.com/senior-frontend"},
+            )
+            jobs_path = workspace / "walker/jobs/jobs.json"
+            job_id = json.loads(jobs_path.read_text(encoding="utf-8"))["jobs"][0]["id"]
+            output_path = workspace / f"walker/outputs/{job_id}-resume.md"
+            output_path.parent.mkdir(parents=True, exist_ok=True)
+            output_path.write_text("old output", encoding="utf-8")
+
+            response = client.post(f"/roles/walker/jobs/{job_id}/delete", follow_redirects=False)
+
+            self.assertEqual(response.status_code, 303)
+            self.assertEqual(json.loads(jobs_path.read_text(encoding="utf-8"))["jobs"], [])
+            self.assertFalse(output_path.exists())
+
     def test_role_detail_lists_tracked_jobs(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             workspace = Path(tmpdir) / "workspace"

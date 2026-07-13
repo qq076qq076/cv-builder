@@ -108,6 +108,26 @@ class JobServiceTest(unittest.TestCase):
             )
             self.assertEqual(service.list_outputs_by_job()[job.id]["resume"].pdf_path, result.pdf_path)
 
+    def test_generate_output_reuses_cached_job_description(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            service = JobService(Path(tmpdir) / "workspace/walker")
+            job = service.create_job_from_url(
+                "https://jobs.example.com/frontend",
+                description="Cached Angular role description.",
+            )
+            FakeTailoredResumeGenerator.calls = []
+
+            with patch("app.services.job_service._fetch_job_page_text") as fetcher:
+                service.generate_output(
+                    job_id=job.id,
+                    kind="resume",
+                    resume=NormalizedResume(name="Walker Lin"),
+                    tailored_resume_generator=FakeTailoredResumeGenerator(),
+                )
+
+            fetcher.assert_not_called()
+            self.assertEqual(FakeTailoredResumeGenerator.calls[-1][2], "Cached Angular role description.")
+
     def test_cover_letter_output_can_be_read_back(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             role_path = Path(tmpdir) / "workspace/walker"
