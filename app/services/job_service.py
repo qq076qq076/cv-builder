@@ -14,7 +14,7 @@ from app.schemas.resume import NormalizedResume
 from app.services.pdf_export_service import ResumePdfExporter
 from app.services.url_fetcher import fetch_url_text
 from app.storage.jobs import JobRepository
-from app.storage.atomic import atomic_write_json
+from app.storage.generation_tasks import GenerationTaskRepository
 
 
 @dataclass(frozen=True)
@@ -40,6 +40,8 @@ class JobService:
         *,
         description: str = "",
         match_score: int | None = None,
+        match_status: str = "pending",
+        match_error: str = "",
     ) -> TrackedJob:
         normalized_url = url.strip()
         title = _title_from_url(normalized_url)
@@ -50,24 +52,24 @@ class JobService:
             url=normalized_url,
             description=description,
             matchScore=match_score,
+            matchStatus=match_status,
+            matchError=match_error,
             createdAt=datetime.now(timezone.utc),
         )
         self.repository.add_job(job)
         return job
 
+    def get_job(self, job_id: str) -> TrackedJob | None:
+        return self.repository.get_job(job_id)
+
     def update_job(self, job: TrackedJob) -> TrackedJob:
-        collection = self.repository.list_jobs()
-        updated = [job if item.id == job.id else item for item in collection.jobs]
-        atomic_write_json(
-            self.repository.jobs_path,
-            {"schemaVersion": 1, "jobs": [item.model_dump(mode="json", by_alias=True) for item in updated]},
-        )
-        return job
+        return self.repository.update_job(job)
 
     def remove_job(self, job_id: str) -> bool:
         removed = self.repository.remove_job(job_id)
         if not removed:
             return False
+        GenerationTaskRepository(self.role_path).remove_for_job(job_id)
         output_dir = self.role_path / "outputs"
         for path in output_dir.glob(f"{job_id}-*"):
             if path.is_file():
@@ -214,13 +216,15 @@ def _build_generated_markdown(
     tailored_resume_generator: TailoredResumeGenerator | None = None,
     insights_generator=None,
 ) -> str:
+    job_page_text = job.description.strip() or _fetch_job_page_text(job.url)
+
     if kind == "resume":
         if tailored_resume_generator is None:
             raise RuntimeError("缺少 OPENAI_API_KEY 或 GEMINI_API_KEY，無法生成專用履歷")
         return tailored_resume_generator.generate(
             resume=resume,
             job=job,
-            job_page_text=_fetch_job_page_text(job.url),
+            job_page_text=job_page_text,
         )
 
     if kind == "suggestions":
@@ -229,7 +233,7 @@ def _build_generated_markdown(
         return insights_generator.generate_suggestions(
             resume=resume,
             job=job,
-            job_page_text=_fetch_job_page_text(job.url),
+            job_page_text=job_page_text,
         )
 
     if cover_letter_generator is None:
@@ -238,7 +242,7 @@ def _build_generated_markdown(
     return cover_letter_generator.generate(
         resume=resume,
         job=job,
-        job_page_text=_fetch_job_page_text(job.url),
+        job_page_text=job_page_text,
     )
 
 

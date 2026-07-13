@@ -1,10 +1,15 @@
 from __future__ import annotations
 
 import json
+import threading
 from pathlib import Path
 
 from app.schemas.job import TrackedJob, TrackedJobCollection
 from app.storage.atomic import atomic_write_json
+
+
+_JOBS_LOCKS: dict[Path, threading.Lock] = {}
+_JOBS_LOCKS_GUARD = threading.Lock()
 
 
 class JobRepository:
@@ -24,10 +29,21 @@ class JobRepository:
         return TrackedJobCollection.model_validate(data)
 
     def add_job(self, job: TrackedJob) -> TrackedJobCollection:
-        collection = self.list_jobs()
-        updated = TrackedJobCollection(jobs=[job, *collection.jobs])
-        atomic_write_json(self.jobs_path, updated.model_dump(mode="json", by_alias=True))
-        return updated
+        with self._lock():
+            collection = self.list_jobs()
+            updated = TrackedJobCollection(jobs=[job, *collection.jobs])
+            atomic_write_json(self.jobs_path, updated.model_dump(mode="json", by_alias=True))
+            return updated
+
+    def update_job(self, job: TrackedJob) -> TrackedJob:
+        with self._lock():
+            collection = self.list_jobs()
+            updated_jobs = [job if item.id == job.id else item for item in collection.jobs]
+            atomic_write_json(
+                self.jobs_path,
+                TrackedJobCollection(jobs=updated_jobs).model_dump(mode="json", by_alias=True),
+            )
+            return job
 
     def get_job(self, job_id: str) -> TrackedJob | None:
         for job in self.list_jobs().jobs:
@@ -36,12 +52,20 @@ class JobRepository:
         return None
 
     def remove_job(self, job_id: str) -> bool:
-        collection = self.list_jobs()
-        updated_jobs = [job for job in collection.jobs if job.id != job_id]
-        if len(updated_jobs) == len(collection.jobs):
-            return False
-        atomic_write_json(
-            self.jobs_path,
-            TrackedJobCollection(jobs=updated_jobs).model_dump(mode="json", by_alias=True),
-        )
-        return True
+        with self._lock():
+            collection = self.list_jobs()
+            updated_jobs = [job for job in collection.jobs if job.id != job_id]
+            if len(updated_jobs) == len(collection.jobs):
+                return False
+            atomic_write_json(
+                self.jobs_path,
+                TrackedJobCollection(jobs=updated_jobs).model_dump(mode="json", by_alias=True),
+            )
+            return True
+
+    def _lock(self) -> threading.Lock:
+        path = self.jobs_path.resolve()
+        with _JOBS_LOCKS_GUARD:
+            if path not in _JOBS_LOCKS:
+                _JOBS_LOCKS[path] = threading.Lock()
+            return _JOBS_LOCKS[path]

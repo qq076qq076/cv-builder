@@ -87,6 +87,11 @@ class GenerationTaskRepository:
         with self._lock():
             return self._read_tasks_unlocked()
 
+    def remove_for_job(self, job_id: str) -> None:
+        with self._lock():
+            tasks = [task for task in self._read_tasks_unlocked() if task.job_id != job_id]
+            self._write_tasks_unlocked(tasks)
+
     def latest_by_job(self) -> dict[str, dict[str, GenerationTask]]:
         latest: dict[str, dict[str, GenerationTask]] = {}
         for task in self.list_tasks():
