@@ -92,6 +92,39 @@ class GenerationTaskRepository:
             tasks = [task for task in self._read_tasks_unlocked() if task.job_id != job_id]
             self._write_tasks_unlocked(tasks)
 
+    def recover_interrupted_tasks(self) -> int:
+        """Mark tasks left active by a previous process as failed.
+
+        The current worker uses daemon threads, so an application shutdown can
+        leave queued/running tasks in the JSON file forever.  Recovery is
+        intentionally explicit and idempotent so it is safe to run at startup.
+        """
+        with self._lock():
+            tasks = self._read_tasks_unlocked()
+            recovered = 0
+            updated: list[GenerationTask] = []
+            for task in tasks:
+                if task.status not in {"queued", "running"}:
+                    updated.append(task)
+                    continue
+                recovered += 1
+                updated.append(
+                    GenerationTask(
+                        id=task.id,
+                        job_id=task.job_id,
+                        kind=task.kind,
+                        status="failed",
+                        output_path=task.output_path,
+                        pdf_path=task.pdf_path,
+                        error="應用程式在任務完成前中斷，請重新執行。",
+                        created_at=task.created_at,
+                        updated_at=_now_iso(),
+                    )
+                )
+            if recovered:
+                self._write_tasks_unlocked(updated)
+            return recovered
+
     def latest_by_job(self) -> dict[str, dict[str, GenerationTask]]:
         latest: dict[str, dict[str, GenerationTask]] = {}
         for task in self.list_tasks():

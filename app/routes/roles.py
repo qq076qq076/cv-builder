@@ -513,6 +513,8 @@ def generate_role_job_output(
     role_service = RoleService(settings.workspace_path)
     role = role_service.get_role(role_id)
     if role is not None:
+        if JobService(role_service.role_path(role_id)).get_job(job_id) is None:
+            raise HTTPException(status_code=404, detail="Job not found")
         _start_generation_task(
             role_path=role_service.role_path(role_id),
             settings=settings,
@@ -536,6 +538,8 @@ def create_generation_task(
     role = role_service.get_role(role_id)
     if role is None:
         raise HTTPException(status_code=404, detail="Role not found")
+    if JobService(role_service.role_path(role_id)).get_job(job_id) is None:
+        raise HTTPException(status_code=404, detail="Job not found")
 
     task = _start_generation_task(
         role_path=role_service.role_path(role_id),
@@ -590,6 +594,35 @@ def cancel_generation_task(
         {
             "task": _generation_task_payload(task=task, role_id=role_id) if task else None,
         }
+    )
+
+
+@router.post(
+    "/roles/{role_id}/jobs/{job_id}/generation-tasks/retry",
+    status_code=status.HTTP_202_ACCEPTED,
+)
+def retry_generation_task(
+    role_id: str,
+    job_id: str,
+    kind: str = Form(...),
+) -> JSONResponse:
+    settings = get_settings()
+    role_service = RoleService(settings.workspace_path)
+    role = role_service.get_role(role_id)
+    if role is None:
+        raise HTTPException(status_code=404, detail="Role not found")
+    if JobService(role_service.role_path(role_id)).get_job(job_id) is None:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    task = _start_generation_task(
+        role_path=role_service.role_path(role_id),
+        settings=settings,
+        job_id=job_id,
+        kind=kind,
+    )
+    return JSONResponse(
+        status_code=status.HTTP_202_ACCEPTED,
+        content={"task": _generation_task_payload(task=task, role_id=role_id)},
     )
 
 

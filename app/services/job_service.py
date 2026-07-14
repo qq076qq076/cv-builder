@@ -15,6 +15,7 @@ from app.services.pdf_export_service import ResumePdfExporter
 from app.services.url_fetcher import fetch_url_text
 from app.storage.jobs import JobRepository
 from app.storage.generation_tasks import GenerationTaskRepository
+from app.storage.atomic import atomic_write_text
 
 
 @dataclass(frozen=True)
@@ -103,10 +104,7 @@ class JobService:
             tailored_resume_generator=tailored_resume_generator,
             insights_generator=insights_generator,
         )
-        output_path.write_text(
-            content,
-            encoding="utf-8",
-        )
+        atomic_write_text(output_path, content)
         pdf_path = None
         if safe_kind == "resume" and resume_pdf_exporter is not None:
             pdf_relative_path = Path("outputs") / f"{job.id}-{safe_kind}.pdf"

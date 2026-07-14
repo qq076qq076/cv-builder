@@ -147,6 +147,9 @@ http://127.0.0.1:8000/health
 - `POST /roles/{role_id}/jobs/{job_id}/generation-tasks`：以 `multipart/form-data` 送出 `kind=resume` 或 `kind=cover_letter`，回傳 `202 Accepted` 與排入佇列的 `task`。
 - `GET /roles/{role_id}/generation-tasks`：取得角色下全部生成任務。
 - `POST /roles/{role_id}/jobs/{job_id}/generation-tasks/cancel`：以 `multipart/form-data` 送出 `kind`，取消進行中的同類任務。
+- `POST /roles/{role_id}/jobs/{job_id}/generation-tasks/retry`：以 `multipart/form-data` 送出 `kind`，重新排入失敗任務。
+
+應用程式啟動時會將上一次程序中斷而仍停留在 `queued` 或 `running` 的任務標記為失敗，避免任務永久卡住；角色頁面可直接重試失敗任務。
 
 舊的 `POST /roles/{role_id}/jobs/{job_id}/generate` 仍保留給 HTML 表單使用，並維持 redirect 行為。
 
