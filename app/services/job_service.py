@@ -126,7 +126,7 @@ class JobService:
     def list_outputs_by_job(self) -> dict[str, dict[str, GeneratedJobOutput]]:
         outputs: dict[str, dict[str, GeneratedJobOutput]] = {}
         for job in self.list_jobs():
-            for kind in ("resume", "cover-letter", "suggestions"):
+            for kind in ("resume", "cover-letter", "suggestions", "interview-prep"):
                 output = self.get_output(job_id=job.id, kind=kind)
                 if output is not None:
                     outputs.setdefault(job.id, {})[kind] = output
@@ -159,7 +159,15 @@ class JobService:
             return None
 
         name = requested_path.name
-        kind = "cover-letter" if name.endswith("-cover-letter.md") else "suggestions" if name.endswith("-suggestions.md") else "resume"
+        kind = (
+            "cover-letter"
+            if name.endswith("-cover-letter.md")
+            else "suggestions"
+            if name.endswith("-suggestions.md")
+            else "interview-prep"
+            if name.endswith("-interview-prep.md")
+            else "resume"
+        )
         job_id = _job_id_from_output_name(name, kind)
         pdf_path = self._pdf_path_for(job_id) if kind == "resume" and job_id else None
         return GeneratedJobOutput(
@@ -199,7 +207,11 @@ def _company_from_url(url: str) -> str:
 
 
 def _job_id_from_output_name(name: str, kind: str) -> str | None:
-    suffix = {"cover-letter": "-cover-letter.md", "suggestions": "-suggestions.md"}.get(kind, "-resume.md")
+    suffix = {
+        "cover-letter": "-cover-letter.md",
+        "suggestions": "-suggestions.md",
+        "interview-prep": "-interview-prep.md",
+    }.get(kind, "-resume.md")
     if not name.endswith(suffix):
         return None
     return name[: -len(suffix)]
@@ -234,6 +246,15 @@ def _build_generated_markdown(
             job_page_text=job_page_text,
         )
 
+    if kind == "interview-prep":
+        if insights_generator is None:
+            raise RuntimeError("缺少 AI 面試準備生成器")
+        return insights_generator.generate_interview_prep(
+            resume=resume,
+            job=job,
+            job_page_text=job_page_text,
+        )
+
     if cover_letter_generator is None:
         raise RuntimeError("缺少 OPENAI_API_KEY 或 GEMINI_API_KEY，無法生成推薦信")
 
@@ -249,6 +270,8 @@ def _safe_output_kind(kind: str) -> str:
         return "cover-letter"
     if kind in {"suggestion", "suggestions"}:
         return "suggestions"
+    if kind in {"interview_prep", "interview-prep"}:
+        return "interview-prep"
     return "resume"
 
 

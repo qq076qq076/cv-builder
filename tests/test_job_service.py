@@ -6,6 +6,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from app.ai.cover_letter_generator import GeminiCoverLetterGenerator, build_cover_letter_prompt
+from app.ai.job_insights_generator import _build_interview_prep_markdown
 from app.ai.tailored_resume_generator import GeminiTailoredResumeGenerator, build_tailored_resume_prompt
 from app.schemas.resume import NormalizedResume
 from app.services.job_service import JobService, _clean_job_page_text, _fetch_job_page_text
@@ -49,6 +50,34 @@ class FakeGeminiResponse:
 
 
 class JobServiceTest(unittest.TestCase):
+    def test_interview_prep_markdown_contains_all_categories_and_star_fields(self) -> None:
+        question = {
+            "question": "請說明你如何處理技術取捨？",
+            "why_it_matters": "確認技術判斷能力。",
+            "star_answer": {
+                "situation": "專案需要在期限內完成。",
+                "task": "負責評估方案。",
+                "action": "比較方案並與團隊討論。",
+                "result": "完成可維護的實作。",
+            },
+        }
+
+        markdown = _build_interview_prep_markdown(
+            {
+                "technical": [question, question],
+                "behavioral": [question, question],
+                "management": [question, question],
+                "project_deep_dive": [question, question],
+            }
+        )
+
+        self.assertIn("## 技術問題", markdown)
+        self.assertIn("## 行為問題", markdown)
+        self.assertIn("## 管理能力問題", markdown)
+        self.assertIn("## 專案深挖問題", markdown)
+        self.assertIn("**Situation：** 專案需要在期限內完成。", markdown)
+        self.assertIn("**Result：** 完成可維護的實作。", markdown)
+
     def test_create_job_from_url_persists_job(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             role_path = Path(tmpdir) / "workspace/walker"

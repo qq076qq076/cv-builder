@@ -973,12 +973,19 @@ def _safe_generation_kind(kind: str) -> str:
         return "cover-letter"
     if kind in {"suggestion", "suggestions"}:
         return "suggestions"
+    if kind in {"interview_prep", "interview-prep"}:
+        return "interview-prep"
     return "resume"
 
 
 def _generation_task_payload(*, task: GenerationTask, role_id: str) -> dict[str, str]:
     payload = task.to_dict()
-    payload["label"] = {"cover-letter": "推薦信", "suggestions": "建議", "resume": "履歷"}.get(task.kind, task.kind)
+    payload["label"] = {
+        "cover-letter": "推薦信",
+        "suggestions": "建議",
+        "interview-prep": "面試準備",
+        "resume": "履歷",
+    }.get(task.kind, task.kind)
     if task.output_path:
         payload["viewUrl"] = f"/roles/{role_id}?generated_output={task.output_path}#jobs"
     else:

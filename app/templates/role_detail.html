@@ -59,12 +59,12 @@
               <div>
                 <p class="app-kicker">Generated Output</p>
                 <h2 id="generated-output-title">
-                  {% if active_generated_output.kind == "cover-letter" %}推薦信草稿{% elif active_generated_output.kind == "suggestions" %}職缺建議{% else %}專用履歷草稿{% endif %}
+                  {% if active_generated_output.kind == "cover-letter" %}推薦信草稿{% elif active_generated_output.kind == "suggestions" %}職缺建議{% elif active_generated_output.kind == "interview-prep" %}面試準備{% else %}專用履歷草稿{% endif %}
                 </h2>
               </div>
               {% if active_generated_output.job_id %}
               <form class="modal-regenerate-form" method="post" action="/roles/{{ role.id }}/jobs/{{ active_generated_output.job_id }}/generate" data-loading-form data-background-generate data-job-id="{{ active_generated_output.job_id }}" data-generation-kind="{{ active_generated_output.kind }}" data-cancel-action="/roles/{{ role.id }}/jobs/{{ active_generated_output.job_id }}/generation-tasks/cancel">
-                <input name="kind" type="hidden" value="{{ 'cover_letter' if active_generated_output.kind == 'cover-letter' else active_generated_output.kind }}">
+                <input name="kind" type="hidden" value="{{ 'cover_letter' if active_generated_output.kind == 'cover-letter' else 'interview_prep' if active_generated_output.kind == 'interview-prep' else active_generated_output.kind }}">
                 {{ loading_button("重新生成", "重新生成中，點擊取消", "app-button-primary") }}
               </form>
               {% endif %}

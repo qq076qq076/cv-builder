@@ -28,12 +28,16 @@
             {% set resume_output = job_output.get("resume") %}
             {% set cover_letter_output = job_output.get("cover-letter") %}
             {% set suggestions_output = job_output.get("suggestions") %}
+            {% set interview_prep_output = job_output.get("interview-prep") %}
             {% set job_tasks = generation_tasks.get(job.id, {}) %}
             {% set resume_task = job_tasks.get("resume") %}
             {% set cover_letter_task = job_tasks.get("cover-letter") %}
             {% set suggestions_task = job_tasks.get("suggestions") %}
+            {% set interview_prep_task = job_tasks.get("interview-prep") %}
             {% set resume_running = resume_task and resume_task.status in ["queued", "running"] %}
             {% set cover_letter_running = cover_letter_task and cover_letter_task.status in ["queued", "running"] %}
+            {% set suggestions_running = suggestions_task and suggestions_task.status in ["queued", "running"] %}
+            {% set interview_prep_running = interview_prep_task and interview_prep_task.status in ["queued", "running"] %}
             <article class="job-item">
               <div class="job-company-badge">{{ job.company[:1]|upper if job.company else "J" }}</div>
               <div class="job-item-main">
@@ -62,7 +66,12 @@
                 {% if suggestions_output %}<a class="app-button app-button-secondary" href="/roles/{{ role.id }}?generated_output={{ suggestions_output.path }}#jobs">建議</a>{% elif suggestions_task and suggestions_task.status == "failed" %}
                   <form method="post" action="/roles/{{ role.id }}/jobs/{{ job.id }}/generation-tasks/retry" data-loading-form><input name="kind" type="hidden" value="suggestions"><button class="app-button app-button-secondary" type="submit" title="{{ suggestions_task.error }}">重試建議</button></form>
                 {% else %}
-                  <form method="post" action="/roles/{{ role.id }}/jobs/{{ job.id }}/generate" data-loading-form data-background-generate data-job-id="{{ job.id }}" data-generation-kind="suggestions" data-cancel-action="/roles/{{ role.id }}/jobs/{{ job.id }}/generation-tasks/cancel"><input name="kind" type="hidden" value="suggestions">{{ loading_button("建議", "產生建議中，點擊取消", "app-button-secondary") }}</form>
+                  <form class="{% if suggestions_running %}is-submitting{% endif %}" method="post" action="/roles/{{ role.id }}/jobs/{{ job.id }}/generate" data-loading-form data-background-generate data-job-id="{{ job.id }}" data-generation-kind="suggestions" data-cancel-action="/roles/{{ role.id }}/jobs/{{ job.id }}/generation-tasks/cancel"><input name="kind" type="hidden" value="suggestions">{{ loading_button("建議", "產生建議中，點擊取消", "app-button-secondary") }}</form>
+                {% endif %}
+                {% if interview_prep_output %}<a class="app-button app-button-secondary" href="/roles/{{ role.id }}?generated_output={{ interview_prep_output.path }}#jobs">面試準備</a>{% elif interview_prep_task and interview_prep_task.status == "failed" %}
+                  <form method="post" action="/roles/{{ role.id }}/jobs/{{ job.id }}/generation-tasks/retry" data-loading-form><input name="kind" type="hidden" value="interview-prep"><button class="app-button app-button-secondary" type="submit" title="{{ interview_prep_task.error }}">重試面試準備</button></form>
+                {% else %}
+                  <form class="{% if interview_prep_running %}is-submitting{% endif %}" method="post" action="/roles/{{ role.id }}/jobs/{{ job.id }}/generate" data-loading-form data-background-generate data-job-id="{{ job.id }}" data-generation-kind="interview-prep" data-cancel-action="/roles/{{ role.id }}/jobs/{{ job.id }}/generation-tasks/cancel"><input name="kind" type="hidden" value="interview_prep">{{ loading_button("面試準備", "生成面試準備中，點擊取消", "app-button-secondary") }}</form>
                 {% endif %}
                 <form method="post" action="/roles/{{ role.id }}/jobs/{{ job.id }}/delete" onsubmit="return window.confirm('確定要移除此職缺？');">
                   <button class="app-button app-button-danger" type="submit">移除</button>

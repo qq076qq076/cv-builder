@@ -12,7 +12,7 @@ cv-builder 是一個本機優先的 AI 職涯資料與履歷輔助工具。它�
 - 使用 OpenAI 或 Gemini 將來源資料正規化成結構化履歷。
 - 在角色頁面手動編輯個人摘要、經歷、學歷、專案、技能、聯絡方式與語言能力。
 - 新增職缺 URL，會讀取職缺頁內容並以 AI 計算履歷吻合度。
-- 每個職缺提供「履歷」、「推薦信」、「建議」三個按鈕；建議包含五項面試準備與五項履歷／經歷調整建議，生成後可在 popup 查看並重新生成。
+- 每個職缺提供「履歷」、「推薦信」、「建議」、「面試準備」四個按鈕；面試準備包含技術、行為、管理能力與專案深挖問題，每題附 STAR 回答草稿。
 - LinkedIn、104、Cake、Yourator 等 URL 透過 Playwright 抓取 JS render 後的內容。
 
 ## 技術架構
@@ -146,7 +146,7 @@ http://127.0.0.1:8000/health
 
 目前頁面仍由 FastAPI 與 Jinja server-side rendering 提供；長時間執行的生成任務已提供 JSON API，讓未來的獨立前端或其他客戶端可以共用同一個任務合約。
 
-- `POST /roles/{role_id}/jobs/{job_id}/generation-tasks`：以 `multipart/form-data` 送出 `kind=resume` 或 `kind=cover_letter`，回傳 `202 Accepted` 與排入佇列的 `task`。
+- `POST /roles/{role_id}/jobs/{job_id}/generation-tasks`：以 `multipart/form-data` 送出 `kind=resume`、`kind=cover_letter`、`kind=suggestions` 或 `kind=interview_prep`，回傳 `202 Accepted` 與排入佇列的 `task`。
 - `GET /roles/{role_id}/generation-tasks`：取得角色下全部生成任務。
 - `POST /roles/{role_id}/jobs/{job_id}/generation-tasks/cancel`：以 `multipart/form-data` 送出 `kind`，取消進行中的同類任務。
 - `POST /roles/{role_id}/jobs/{job_id}/generation-tasks/retry`：以 `multipart/form-data` 送出 `kind`，重新排入失敗任務。

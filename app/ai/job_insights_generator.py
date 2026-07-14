@@ -18,11 +18,18 @@ from app.schemas.resume import NormalizedResume
 class JobInsightsGenerator(Protocol):
     def evaluate(self, *, resume: NormalizedResume, job: TrackedJob, job_page_text: str = "") -> dict: ...
     def generate_suggestions(self, *, resume: NormalizedResume, job: TrackedJob, job_page_text: str = "") -> str: ...
+    def generate_interview_prep(self, *, resume: NormalizedResume, job: TrackedJob, job_page_text: str = "") -> str: ...
 
 
 SYSTEM_PROMPT = """你是求職顧問。所有輸出使用繁體中文。只能根據提供的職缺與履歷，不得捏造經歷。
 評估時回傳 JSON：{"score": 0到100的整數}。
 建議時回傳 JSON：{"interview_preparation": 五個字串, "resume_adjustments": 五個字串}。兩個陣列都必須剛好五項。"""
+
+INTERVIEW_PREP_SYSTEM_PROMPT = """你是資深面試教練。所有輸出使用繁體中文，只能根據提供的履歷與職缺，不得捏造經歷。
+請產生 8 題面試題，每個分類 2 題：technical、behavioral、management、project_deep_dive。
+每題都必須包含 question、why_it_matters，以及 star_answer；star_answer 必須包含 situation、task、action、result。
+如果履歷沒有足夠資料，對應 STAR 欄位請明確寫「需要候選人補充」，不要自行編造。
+只回傳 JSON，格式為四個分類各自包含兩個題目。"""
 
 
 def build_insights_prompt(*, action: str, resume: NormalizedResume, job: TrackedJob, job_page_text: str = "") -> str:
@@ -32,6 +39,10 @@ def build_insights_prompt(*, action: str, resume: NormalizedResume, job: Tracked
         f"履歷資料：{json.dumps(resume.model_dump(mode='json', by_alias=True), ensure_ascii=False, default=str)}\n"
         "只回傳要求的 JSON，不要 markdown。"
     )
+
+
+def build_interview_prep_prompt(*, resume: NormalizedResume, job: TrackedJob, job_page_text: str = "") -> str:
+    return build_insights_prompt(action="interview_prep", resume=resume, job=job, job_page_text=job_page_text)
 
 
 def _parse_json_response(content: str) -> dict:
@@ -57,9 +68,9 @@ class OpenAIJobInsightsGenerator:
             log_path,
         )
 
-    def _json(self, *, action: str, resume, job, job_page_text) -> dict:
+    def _json(self, *, action: str, resume, job, job_page_text, system_prompt: str = SYSTEM_PROMPT) -> dict:
         messages = [
-            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "system", "content": system_prompt},
             {
                 "role": "user",
                 "content": build_insights_prompt(
@@ -101,6 +112,16 @@ class OpenAIJobInsightsGenerator:
             + "\n".join(f"{i}. {item}" for i, item in enumerate(adjustments, 1))
         )
 
+    def generate_interview_prep(self, *, resume, job, job_page_text="") -> str:
+        data = self._json(
+            action="interview_prep",
+            resume=resume,
+            job=job,
+            job_page_text=job_page_text,
+            system_prompt=INTERVIEW_PREP_SYSTEM_PROMPT,
+        )
+        return _build_interview_prep_markdown(data)
+
 
 class GeminiJobInsightsGenerator(OpenAIJobInsightsGenerator):
     def __init__(self, *, api_key: str, model: str, log_path: Path | None = None) -> None:
@@ -109,7 +130,7 @@ class GeminiJobInsightsGenerator(OpenAIJobInsightsGenerator):
     def _json(self, *, action: str, resume, job, job_page_text) -> dict:
         payload = {
             "model": self.model,
-            "input": f"{SYSTEM_PROMPT}\n{build_insights_prompt(action=action, resume=resume, job=job, job_page_text=job_page_text)}",
+            "input": f"{INTERVIEW_PREP_SYSTEM_PROMPT if action == 'interview_prep' else SYSTEM_PROMPT}\n{build_insights_prompt(action=action, resume=resume, job=job, job_page_text=job_page_text)}",
         }
         _debug_log_ai_payload("Gemini job insights input", payload, self.log_path)
         req = request.Request(
@@ -130,3 +151,42 @@ class GeminiJobInsightsGenerator(OpenAIJobInsightsGenerator):
         content = _extract_gemini_text(data)
         _debug_log_ai_payload("Gemini job insights output", content, self.log_path)
         return _parse_json_response(content)
+
+
+def _build_interview_prep_markdown(data: dict) -> str:
+    category_labels = {
+        "technical": "技術問題",
+        "behavioral": "行為問題",
+        "management": "管理能力問題",
+        "project_deep_dive": "專案深挖問題",
+    }
+    sections: list[str] = []
+    for category, label in category_labels.items():
+        questions = data.get(category)
+        if not isinstance(questions, list) or len(questions) != 2:
+            raise RuntimeError(f"AI 面試準備的{label}必須剛好提供兩題")
+        lines = [f"## {label}", ""]
+        for index, item in enumerate(questions, 1):
+            if not isinstance(item, dict):
+                raise RuntimeError("AI 面試準備的題目格式無效")
+            question = str(item.get("question", "")).strip()
+            why = str(item.get("why_it_matters", "")).strip()
+            star = item.get("star_answer")
+            if not question or not why or not isinstance(star, dict):
+                raise RuntimeError("AI 面試準備的題目內容不完整")
+            lines.extend(
+                [
+                    f"### {index}. {question}",
+                    "",
+                    f"**考察重點：** {why}",
+                    "",
+                    "**STAR 回答草稿**",
+                    f"- **Situation：** {str(star.get('situation', '')).strip() or '需要候選人補充'}",
+                    f"- **Task：** {str(star.get('task', '')).strip() or '需要候選人補充'}",
+                    f"- **Action：** {str(star.get('action', '')).strip() or '需要候選人補充'}",
+                    f"- **Result：** {str(star.get('result', '')).strip() or '需要候選人補充'}",
+                    "",
+                ]
+            )
+        sections.append("\n".join(lines).rstrip())
+    return "\n\n".join(sections) + "\n"
