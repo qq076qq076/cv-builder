@@ -1,0 +1,491 @@
+      <div class="role-layout">
+        <div class="role-main-column">
+          <section class="app-panel editable-panel" id="profile">
+            <div class="app-panel-heading editable-heading">
+              <span class="panel-title-group">
+                <span class="material-symbols-outlined panel-icon">badge</span>
+                <span>
+                  <h2>個人概要</h2>
+                  <small>Profile summary</small>
+                </span>
+              </span>
+              <details class="panel-editor">
+                <summary class="material-symbols-outlined edit-icon">edit</summary>
+                <form class="app-form edit-form" method="post" action="/roles/{{ role.id }}/resume/profile">
+                  <div class="edit-mode-actions" aria-label="個人概要編輯操作">
+                    <button class="edit-action edit-action-confirm" type="submit" title="儲存個人概要">
+                      <span class="material-symbols-outlined">check_circle</span>
+                    </button>
+                    <button class="edit-action edit-action-cancel" type="button" title="取消編輯" onclick="this.closest('details').removeAttribute('open')">
+                      <span class="material-symbols-outlined">cancel</span>
+                    </button>
+                  </div>
+                  <label>
+                    <span>姓名</span>
+                    <input name="name" value="{{ resume.name or profile.name }}" placeholder="例如：王小明">
+                  </label>
+                  <label>
+                    <span>職稱</span>
+                    <input name="title" value="{{ resume.title }}" placeholder="例如：Senior Frontend Engineer">
+                  </label>
+                  <label>
+                    <span>摘要</span>
+                    <textarea name="summary" rows="5">{{ resume.summary }}</textarea>
+                  </label>
+                  <label>
+                    <span>自傳</span>
+                    <textarea name="autobiography" rows="5">{{ resume.autobiography }}</textarea>
+                  </label>
+                  <div class="app-actions">
+                    <button class="app-button app-button-primary" type="submit">儲存概要</button>
+                  </div>
+                </form>
+              </details>
+            </div>
+            <div class="profile-summary-card read-view">
+              <h3>{{ resume.name or profile.name or role.name }}</h3>
+              {% if resume.title %}<p class="profile-title">{{ resume.title }}</p>{% endif %}
+              {% if resume.summary %}<p>{{ resume.summary }}</p>{% endif %}
+              {% if resume.autobiography %}<p>{{ resume.autobiography }}</p>{% endif %}
+            </div>
+          </section>
+
+          <section class="app-panel editable-panel role-timeline-panel" id="experiences">
+            <div class="app-panel-heading editable-heading">
+              <span class="panel-title-group">
+                <span class="material-symbols-outlined panel-icon">history</span>
+                <span>
+                  <h2>工作經歷</h2>
+                  <small>Experience timeline</small>
+                </span>
+              </span>
+              <details class="panel-editor">
+                <summary class="material-symbols-outlined edit-icon">edit</summary>
+                <form class="app-form edit-form" method="post" action="/roles/{{ role.id }}/resume/experiences">
+                  <div class="edit-mode-actions" aria-label="工作經歷編輯操作">
+                    <button class="edit-action edit-action-confirm" type="submit" title="儲存工作經歷">
+                      <span class="material-symbols-outlined">check_circle</span>
+                    </button>
+                    <button class="edit-action edit-action-cancel" type="button" title="取消編輯" onclick="this.closest('details').removeAttribute('open')">
+                      <span class="material-symbols-outlined">cancel</span>
+                    </button>
+                  </div>
+                  <div class="repeatable-list" data-repeatable-list="experience">
+                    {% for item in resume.experiences %}
+                      <article class="edit-item-card" data-repeatable-item>
+                        <button class="edit-item-delete" type="button" onclick="this.closest('[data-repeatable-item]').remove()" title="刪除此工作經歷">
+                          <span class="material-symbols-outlined">delete</span>
+                        </button>
+                        <div class="edit-field-grid">
+                          <input name="experience_title" value="{{ item.title }}" placeholder="職稱">
+                          <input name="experience_company" value="{{ item.company }}" placeholder="公司">
+                          <input name="experience_period" value="{{ item.start_date }}{% if item.end_date %} - {{ item.end_date }}{% endif %}" placeholder="期間，例如：2021 - Present">
+                          <textarea name="experience_summary" rows="4" placeholder="工作摘要">{{ item.summary }}</textarea>
+                          <input name="experience_achievements" value="{{ ', '.join(item.achievements) }}" placeholder="成就，以逗號分隔">
+                          <input name="experience_technologies" value="{{ ', '.join(item.technologies) }}" placeholder="技術，以逗號分隔">
+                        </div>
+                      </article>
+                    {% endfor %}
+                  </div>
+                  <template data-repeatable-template="experience">
+                    <article class="edit-item-card" data-repeatable-item>
+                      <button class="edit-item-delete" type="button" onclick="this.closest('[data-repeatable-item]').remove()" title="刪除此工作經歷">
+                        <span class="material-symbols-outlined">delete</span>
+                      </button>
+                      <div class="edit-field-grid">
+                        <input name="experience_title" placeholder="職稱">
+                        <input name="experience_company" placeholder="公司">
+                        <input name="experience_period" placeholder="期間，例如：2021 - Present">
+                        <textarea name="experience_summary" rows="4" placeholder="工作摘要"></textarea>
+                        <input name="experience_achievements" placeholder="成就，以逗號分隔">
+                        <input name="experience_technologies" placeholder="技術，以逗號分隔">
+                      </div>
+                    </article>
+                  </template>
+                  <button class="edit-add-button" type="button" data-add-repeatable="experience">
+                    <span class="material-symbols-outlined">add</span>
+                    Add Experience
+                  </button>
+                  <div class="app-actions">
+                    <button class="app-button app-button-primary" type="submit">儲存工作經歷</button>
+                  </div>
+                </form>
+              </details>
+            </div>
+            <div class="scan-line" aria-hidden="true"></div>
+            {% if resume.experiences %}
+              <div class="timeline-list read-view">
+                {% for item in resume.experiences %}
+                  <article>
+                    <span>{{ item.start_date }}{% if item.end_date %} - {{ item.end_date }}{% endif %}</span>
+                    <h4>{{ item.title }}{% if item.company %} @ {{ item.company }}{% endif %}</h4>
+                    {% if item.summary %}<p>{{ item.summary }}</p>{% endif %}
+                    {% if item.achievements %}
+                      <ul>
+                        {% for achievement in item.achievements %}
+                          <li>{{ achievement }}</li>
+                        {% endfor %}
+                      </ul>
+                    {% endif %}
+                  </article>
+                {% endfor %}
+              </div>
+            {% else %}
+              <p class="read-view">尚未解析工作經歷。可重新解析履歷或展開此區塊編輯。</p>
+            {% endif %}
+          </section>
+
+          <section class="app-panel editable-panel" id="education">
+            <div class="app-panel-heading editable-heading">
+              <span class="panel-title-group">
+                <span class="material-symbols-outlined panel-icon">workspace_premium</span>
+                <span>
+                  <h2>學歷與證照</h2>
+                  <small>Education & certificates</small>
+                </span>
+              </span>
+              <details class="panel-editor">
+                <summary class="material-symbols-outlined edit-icon">edit</summary>
+                <form class="app-form edit-form" method="post" action="/roles/{{ role.id }}/resume/education">
+                  <div class="edit-mode-actions" aria-label="學歷與證照編輯操作">
+                    <button class="edit-action edit-action-confirm" type="submit" title="儲存學歷與證照">
+                      <span class="material-symbols-outlined">check_circle</span>
+                    </button>
+                    <button class="edit-action edit-action-cancel" type="button" title="取消編輯" onclick="this.closest('details').removeAttribute('open')">
+                      <span class="material-symbols-outlined">cancel</span>
+                    </button>
+                  </div>
+                  <div class="edit-subsection-label">學歷</div>
+                  <div class="repeatable-list edit-grid-2" data-repeatable-list="education">
+                    {% for item in resume.education %}
+                      <article class="edit-item-card" data-repeatable-item>
+                        <button class="edit-item-delete" type="button" onclick="this.closest('[data-repeatable-item]').remove()" title="刪除此學歷">
+                          <span class="material-symbols-outlined">delete</span>
+                        </button>
+                        <input name="education_degree" value="{{ item.degree }}" placeholder="學位">
+                        <input name="education_school" value="{{ item.school }}" placeholder="學校">
+                        <input name="education_major" value="{{ item.major }}" placeholder="科系">
+                        <input name="education_period" value="{{ item.start_date }}{% if item.end_date %} - {{ item.end_date }}{% endif %}" placeholder="期間">
+                      </article>
+                    {% endfor %}
+                  </div>
+                  <template data-repeatable-template="education">
+                    <article class="edit-item-card" data-repeatable-item>
+                      <button class="edit-item-delete" type="button" onclick="this.closest('[data-repeatable-item]').remove()" title="刪除此學歷">
+                        <span class="material-symbols-outlined">delete</span>
+                      </button>
+                      <input name="education_degree" placeholder="學位">
+                      <input name="education_school" placeholder="學校">
+                      <input name="education_major" placeholder="科系">
+                      <input name="education_period" placeholder="期間">
+                    </article>
+                  </template>
+                  <button class="edit-add-button" type="button" data-add-repeatable="education">
+                    <span class="material-symbols-outlined">add</span>
+                    Add Education
+                  </button>
+                  <div class="edit-subsection-label">證照</div>
+                  <div class="repeatable-list edit-grid-2" data-repeatable-list="certificate">
+                    {% for item in resume.certificates %}
+                      <article class="edit-item-card" data-repeatable-item>
+                        <button class="edit-item-delete" type="button" onclick="this.closest('[data-repeatable-item]').remove()" title="刪除此證照">
+                          <span class="material-symbols-outlined">delete</span>
+                        </button>
+                        <input name="certificate_name" value="{{ item.name }}" placeholder="證照名稱">
+                        <input name="certificate_issuer" value="{{ item.issuer }}" placeholder="發證單位">
+                        <input name="certificate_date" value="{{ item.date }}" placeholder="日期">
+                      </article>
+                    {% endfor %}
+                  </div>
+                  <template data-repeatable-template="certificate">
+                    <article class="edit-item-card" data-repeatable-item>
+                      <button class="edit-item-delete" type="button" onclick="this.closest('[data-repeatable-item]').remove()" title="刪除此證照">
+                        <span class="material-symbols-outlined">delete</span>
+                      </button>
+                      <input name="certificate_name" placeholder="證照名稱">
+                      <input name="certificate_issuer" placeholder="發證單位">
+                      <input name="certificate_date" placeholder="日期">
+                    </article>
+                  </template>
+                  <button class="edit-add-button" type="button" data-add-repeatable="certificate">
+                    <span class="material-symbols-outlined">add</span>
+                    Add Certificate
+                  </button>
+                  <div class="app-actions">
+                    <button class="app-button app-button-primary" type="submit">儲存學歷與證照</button>
+                  </div>
+                </form>
+              </details>
+            </div>
+            <div class="education-grid read-view">
+              {% for item in resume.education %}
+                <article>
+                  <h4>{{ item.degree or item.major or item.school }}</h4>
+                  <p>{{ item.school }}{% if item.start_date or item.end_date %} // {{ item.start_date }}{% if item.end_date %} - {{ item.end_date }}{% endif %}{% endif %}</p>
+                </article>
+              {% endfor %}
+              {% for item in resume.certificates %}
+                <article>
+                  <h4>{{ item.name }}</h4>
+                  <p>{{ item.issuer }}{% if item.date %} // {{ item.date }}{% endif %}</p>
+                </article>
+              {% endfor %}
+              {% if not resume.education and not resume.certificates %}
+                <p>尚未解析學歷或證照。</p>
+              {% endif %}
+            </div>
+          </section>
+
+          <section class="app-panel editable-panel" id="projects">
+            <div class="app-panel-heading editable-heading">
+              <span class="panel-title-group">
+                <span class="material-symbols-outlined panel-icon">deployed_code</span>
+                <span>
+                  <h2>專案</h2>
+                  <small>Projects</small>
+                </span>
+              </span>
+              <details class="panel-editor">
+                <summary class="material-symbols-outlined edit-icon">edit</summary>
+                <form class="app-form edit-form" method="post" action="/roles/{{ role.id }}/resume/projects">
+                  <div class="edit-mode-actions" aria-label="專案編輯操作">
+                    <button class="edit-action edit-action-confirm" type="submit" title="儲存專案">
+                      <span class="material-symbols-outlined">check_circle</span>
+                    </button>
+                    <button class="edit-action edit-action-cancel" type="button" title="取消編輯" onclick="this.closest('details').removeAttribute('open')">
+                      <span class="material-symbols-outlined">cancel</span>
+                    </button>
+                  </div>
+                  <div class="repeatable-list" data-repeatable-list="project">
+                    {% for item in resume.projects %}
+                      <article class="edit-item-card" data-repeatable-item>
+                        <button class="edit-item-delete" type="button" onclick="this.closest('[data-repeatable-item]').remove()" title="刪除此專案">
+                          <span class="material-symbols-outlined">delete</span>
+                        </button>
+                        <div class="edit-field-grid">
+                          <input name="project_name" value="{{ item.name }}" placeholder="專案名稱">
+                          <input name="project_role" value="{{ item.role }}" placeholder="角色">
+                          <textarea name="project_description" rows="4" placeholder="專案描述">{{ item.description }}</textarea>
+                          <input name="project_technologies" value="{{ ', '.join(item.technologies) }}" placeholder="技術，以逗號分隔">
+                          <input name="project_outcomes" value="{{ ', '.join(item.outcomes) }}" placeholder="成果，以逗號分隔">
+                        </div>
+                      </article>
+                    {% endfor %}
+                  </div>
+                  <template data-repeatable-template="project">
+                    <article class="edit-item-card" data-repeatable-item>
+                      <button class="edit-item-delete" type="button" onclick="this.closest('[data-repeatable-item]').remove()" title="刪除此專案">
+                        <span class="material-symbols-outlined">delete</span>
+                      </button>
+                      <div class="edit-field-grid">
+                        <input name="project_name" placeholder="專案名稱">
+                        <input name="project_role" placeholder="角色">
+                        <textarea name="project_description" rows="4" placeholder="專案描述"></textarea>
+                        <input name="project_technologies" placeholder="技術，以逗號分隔">
+                        <input name="project_outcomes" placeholder="成果，以逗號分隔">
+                      </div>
+                    </article>
+                  </template>
+                  <button class="edit-add-button" type="button" data-add-repeatable="project">
+                    <span class="material-symbols-outlined">add</span>
+                    Add Project
+                  </button>
+                  <div class="app-actions">
+                    <button class="app-button app-button-primary" type="submit">儲存專案</button>
+                  </div>
+                </form>
+              </details>
+            </div>
+            {% if resume.projects %}
+              <div class="compact-list read-view">
+                {% for item in resume.projects %}
+                  <article>
+                    <h4>{{ item.name }}{% if item.role %} - {{ item.role }}{% endif %}</h4>
+                    {% if item.description %}<p>{{ item.description }}</p>{% endif %}
+                    {% if item.outcomes %}
+                      <p>{{ " / ".join(item.outcomes) }}</p>
+                    {% endif %}
+                  </article>
+                {% endfor %}
+              </div>
+            {% else %}
+              <p class="read-view">尚未解析專案。</p>
+            {% endif %}
+          </section>
+        </div>
+
+        <aside class="role-side-column">
+          <section class="app-panel editable-panel" id="skills">
+            <div class="app-panel-heading editable-heading">
+              <span class="panel-title-group">
+                <span class="material-symbols-outlined panel-icon">terminal</span>
+                <span>
+                  <h2>專業技能</h2>
+                  <small>Skill matrix</small>
+                </span>
+              </span>
+              <details class="panel-editor">
+                <summary class="material-symbols-outlined edit-icon">edit</summary>
+                <form class="app-form edit-form" method="post" action="/roles/{{ role.id }}/resume/skills">
+                  <div class="edit-mode-actions" aria-label="專業技能編輯操作">
+                    <button class="edit-action edit-action-confirm" type="submit" title="儲存技能">
+                      <span class="material-symbols-outlined">check_circle</span>
+                    </button>
+                    <button class="edit-action edit-action-cancel" type="button" title="取消編輯" onclick="this.closest('details').removeAttribute('open')">
+                      <span class="material-symbols-outlined">cancel</span>
+                    </button>
+                  </div>
+                  <div class="repeatable-list edit-chip-editor" data-repeatable-list="skill">
+                    {% for skill in resume.skills %}
+                      <span class="edit-chip" data-repeatable-item>
+                        <input name="skill_items" value="{{ skill }}" placeholder="Skill">
+                        <button type="button" onclick="this.closest('[data-repeatable-item]').remove()" title="刪除此技能">×</button>
+                      </span>
+                    {% endfor %}
+                  </div>
+                  <template data-repeatable-template="skill">
+                    <span class="edit-chip" data-repeatable-item>
+                      <input name="skill_items" placeholder="Skill">
+                      <button type="button" onclick="this.closest('[data-repeatable-item]').remove()" title="刪除此技能">×</button>
+                    </span>
+                  </template>
+                  <button class="edit-add-button" type="button" data-add-repeatable="skill">
+                    <span class="material-symbols-outlined">add</span>
+                    Add Skill
+                  </button>
+                  <div class="app-actions">
+                    <button class="app-button app-button-primary" type="submit">儲存技能</button>
+                  </div>
+                </form>
+              </details>
+            </div>
+            <div class="tag-list read-view">
+              {% for skill in resume.skills %}
+                <span>{{ skill }}</span>
+              {% else %}
+                {% for skill in (profile.skills or "").replace(",", "\n").splitlines() %}
+                  {% if skill.strip() %}<span>{{ skill.strip() }}</span>{% endif %}
+                {% endfor %}
+              {% endfor %}
+            </div>
+          </section>
+
+          <section class="app-panel editable-panel" id="contact">
+            <div class="app-panel-heading editable-heading">
+              <span class="panel-title-group">
+                <span class="material-symbols-outlined panel-icon">alternate_email</span>
+                <span>
+                  <h2>聯繫與社群</h2>
+                  <small>Contact</small>
+                </span>
+              </span>
+              <details class="panel-editor">
+                <summary class="material-symbols-outlined edit-icon">edit</summary>
+                <form class="app-form edit-form" method="post" action="/roles/{{ role.id }}/resume/contact">
+                  <div class="edit-mode-actions" aria-label="聯繫與社群編輯操作">
+                    <button class="edit-action edit-action-confirm" type="submit" title="儲存聯絡資料">
+                      <span class="material-symbols-outlined">check_circle</span>
+                    </button>
+                    <button class="edit-action edit-action-cancel" type="button" title="取消編輯" onclick="this.closest('details').removeAttribute('open')">
+                      <span class="material-symbols-outlined">cancel</span>
+                    </button>
+                  </div>
+                  <label>
+                    <span>Email</span>
+                    <input name="email" value="{{ resume.contact.email }}">
+                  </label>
+                  <label>
+                    <span>電話</span>
+                    <input name="phone" value="{{ resume.contact.phone }}">
+                  </label>
+                  <label>
+                    <span>地點</span>
+                    <input name="location" value="{{ resume.contact.location }}">
+                  </label>
+                  <label>
+                    <span>連結，每行一個</span>
+                    <textarea name="links" rows="5">{{ edit.links }}</textarea>
+                  </label>
+                  <div class="app-actions">
+                    <button class="app-button app-button-primary" type="submit">儲存聯絡資料</button>
+                  </div>
+                </form>
+              </details>
+            </div>
+            <div class="contact-list read-view">
+              {% if resume.contact.email %}<p>{{ resume.contact.email }}</p>{% endif %}
+              {% if resume.contact.phone %}<p>{{ resume.contact.phone }}</p>{% endif %}
+              {% if resume.contact.location %}<p>{{ resume.contact.location }}</p>{% endif %}
+              {% for link in resume.contact.links %}
+                <p>{{ link }}</p>
+              {% endfor %}
+              {% if not resume.contact.email and not resume.contact.phone and not resume.contact.location and not resume.contact.links %}
+                <p>尚未解析聯絡資料。</p>
+              {% endif %}
+            </div>
+          </section>
+
+          <section class="app-panel editable-panel" id="languages">
+            <div class="app-panel-heading editable-heading">
+              <span class="panel-title-group">
+                <span class="material-symbols-outlined panel-icon">translate</span>
+                <span>
+                  <h2>語言能力</h2>
+                  <small>Languages</small>
+                </span>
+              </span>
+              <details class="panel-editor">
+                <summary class="material-symbols-outlined edit-icon">edit</summary>
+                <form class="app-form edit-form" method="post" action="/roles/{{ role.id }}/resume/languages">
+                  <div class="edit-mode-actions" aria-label="語言能力編輯操作">
+                    <button class="edit-action edit-action-confirm" type="submit" title="儲存語言能力">
+                      <span class="material-symbols-outlined">check_circle</span>
+                    </button>
+                    <button class="edit-action edit-action-cancel" type="button" title="取消編輯" onclick="this.closest('details').removeAttribute('open')">
+                      <span class="material-symbols-outlined">cancel</span>
+                    </button>
+                  </div>
+                  <div class="repeatable-list" data-repeatable-list="language">
+                    {% for language in resume.languages %}
+                      <article class="edit-item-card" data-repeatable-item>
+                        <button class="edit-item-delete" type="button" onclick="this.closest('[data-repeatable-item]').remove()" title="刪除此語言">
+                          <span class="material-symbols-outlined">delete</span>
+                        </button>
+                        <div class="edit-field-grid">
+                          <input name="language_name" value="{{ language.name }}" placeholder="語言">
+                          <input name="language_proficiency" value="{{ language.proficiency }}" placeholder="程度">
+                        </div>
+                      </article>
+                    {% endfor %}
+                  </div>
+                  <template data-repeatable-template="language">
+                    <article class="edit-item-card" data-repeatable-item>
+                      <button class="edit-item-delete" type="button" onclick="this.closest('[data-repeatable-item]').remove()" title="刪除此語言">
+                        <span class="material-symbols-outlined">delete</span>
+                      </button>
+                      <div class="edit-field-grid">
+                        <input name="language_name" placeholder="語言">
+                        <input name="language_proficiency" placeholder="程度">
+                      </div>
+                    </article>
+                  </template>
+                  <button class="edit-add-button" type="button" data-add-repeatable="language">
+                    <span class="material-symbols-outlined">add</span>
+                    Add Language
+                  </button>
+                  <div class="app-actions">
+                    <button class="app-button app-button-primary" type="submit">儲存語言能力</button>
+                  </div>
+                </form>
+              </details>
+            </div>
+            <div class="contact-list read-view">
+              {% for language in resume.languages %}
+                <p>{{ language.name }}{% if language.proficiency %} // {{ language.proficiency }}{% endif %}</p>
+              {% else %}
+                <p>尚未解析語言能力。</p>
+              {% endfor %}
+            </div>
+          </section>
+        </aside>
+      </div>

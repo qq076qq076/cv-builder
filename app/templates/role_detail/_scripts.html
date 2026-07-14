@@ -1,0 +1,286 @@
+  <script>
+    document.querySelectorAll("[data-add-repeatable]").forEach((button) => {
+      button.addEventListener("click", () => {
+        const key = button.dataset.addRepeatable;
+        const form = button.closest("form");
+        const template = form.querySelector(`[data-repeatable-template="${key}"]`);
+        const list = form.querySelector(`[data-repeatable-list="${key}"]`);
+        if (!template || !list) return;
+        list.append(template.content.firstElementChild.cloneNode(true));
+      });
+    });
+
+    const languageDialog = document.querySelector("[data-language-dialog]");
+    let activeLanguageForm = null;
+
+    const setupLanguagePopup = (form) => {
+      const languageInput = form.querySelector("[data-target-language-input]");
+      if (!languageDialog || !languageInput) return;
+
+      form.addEventListener("submit", (event) => {
+        if (form.dataset.languageConfirmed === "true") {
+          return;
+        }
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        activeLanguageForm = form;
+        if (typeof languageDialog.showModal === "function") {
+          languageDialog.showModal();
+        } else {
+          languageInput.value = window.confirm("使用英文解析？") ? "en" : "zh";
+          form.dataset.languageConfirmed = "true";
+          form.requestSubmit();
+        }
+      });
+    };
+
+    if (languageDialog) {
+      languageDialog.querySelectorAll("[data-language-choice]").forEach((button) => {
+        button.addEventListener("click", () => {
+          if (!activeLanguageForm) return;
+          const languageInput = activeLanguageForm.querySelector("[data-target-language-input]");
+          if (!languageInput) return;
+          languageInput.value = button.dataset.languageChoice || "zh";
+          activeLanguageForm.dataset.languageConfirmed = "true";
+          languageDialog.close();
+          activeLanguageForm.requestSubmit();
+          activeLanguageForm = null;
+        });
+      });
+
+      languageDialog.querySelector("[data-language-cancel]")?.addEventListener("click", () => {
+        activeLanguageForm = null;
+        languageDialog.close();
+      });
+    }
+
+    document.querySelectorAll("[data-language-popup]").forEach(setupLanguagePopup);
+
+    const roleId = "{{ role.id }}";
+    const toastList = document.querySelector("[data-generation-toasts]");
+    const activeGenerationForms = new Map();
+    const clientActiveTaskKeys = new Set();
+    const loadNotifiedTaskIds = () => {
+      try {
+        return JSON.parse(window.sessionStorage.getItem(`generation-notified:${roleId}`) || "[]");
+      } catch (_error) {
+        return [];
+      }
+    };
+    const notifiedTaskIds = new Set(loadNotifiedTaskIds());
+
+    const saveNotifiedTaskIds = () => {
+      window.sessionStorage.setItem(
+        `generation-notified:${roleId}`,
+        JSON.stringify(Array.from(notifiedTaskIds).slice(-100))
+      );
+    };
+
+    const taskKey = (jobId, kind) => `${jobId}:${kind}`;
+
+    const setGenerationFormRunning = (form, running) => {
+      form.classList.toggle("is-submitting", running);
+      form.dataset.generationActive = running ? "true" : "false";
+      form.querySelectorAll('button[type="submit"]').forEach((button) => {
+        if (running) {
+          button.setAttribute("aria-busy", "true");
+          const loadingLabel = button.dataset.loadingLabel;
+          if (loadingLabel) button.setAttribute("aria-label", loadingLabel);
+          button.title = loadingLabel || "點擊取消生成";
+        } else {
+          button.removeAttribute("aria-busy");
+          button.removeAttribute("aria-label");
+          button.removeAttribute("title");
+        }
+      });
+    };
+
+    document.querySelectorAll("[data-background-generate]").forEach((form) => {
+      const key = taskKey(form.dataset.jobId, form.dataset.generationKind);
+      activeGenerationForms.set(key, form);
+      if (form.classList.contains("is-submitting")) {
+        clientActiveTaskKeys.add(key);
+        setGenerationFormRunning(form, true);
+      }
+      form.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        if (form.dataset.generationActive === "true") {
+          await cancelGenerationTask(form, key);
+          return;
+        }
+        setGenerationFormRunning(form, true);
+        clientActiveTaskKeys.add(key);
+        try {
+          const response = await fetch(form.action, {
+            method: "POST",
+            body: new FormData(form),
+            headers: {"X-Requested-With": "fetch"},
+          });
+          if (!response.ok) {
+            throw new Error(`HTTP ${response.status}`);
+          }
+          pollGenerationTasks({force: true});
+        } catch (error) {
+          clientActiveTaskKeys.delete(key);
+          setGenerationFormRunning(form, false);
+          addGenerationToast({
+            status: "failed",
+            label: "生成任務",
+            error: `送出失敗：${error.message}`,
+          });
+        }
+      });
+    });
+
+    const cancelGenerationTask = async (form, key) => {
+      const button = form.querySelector('button[type="submit"]');
+      if (button) {
+        button.disabled = true;
+        button.setAttribute("aria-busy", "true");
+      }
+      try {
+        const response = await fetch(form.dataset.cancelAction, {
+          method: "POST",
+          body: new FormData(form),
+          headers: {"X-Requested-With": "fetch", "Accept": "application/json"},
+        });
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}`);
+        }
+        clientActiveTaskKeys.delete(key);
+        setGenerationFormRunning(form, false);
+        pollGenerationTasks({force: true});
+      } catch (error) {
+        addGenerationToast({
+          status: "failed",
+          label: "取消任務",
+          error: `取消失敗：${error.message}`,
+        });
+      } finally {
+        if (button) {
+          button.disabled = false;
+          if (form.dataset.generationActive !== "true") {
+            button.removeAttribute("aria-busy");
+          }
+        }
+      }
+    };
+
+    const addGenerationToast = (task) => {
+      if (!toastList) return;
+      const notice = document.createElement("div");
+      notice.className = `app-notice generation-toast ${task.status === "failed" || task.status === "cancelled" ? "app-notice-muted" : ""}`;
+      const label = task.label || "生成任務";
+      if (task.status === "completed") {
+        notice.append(`${label}已生成。`);
+        if (task.viewUrl) {
+          const viewLink = document.createElement("a");
+          viewLink.href = task.viewUrl;
+          viewLink.textContent = `查看${label}`;
+          notice.append(" ", viewLink);
+        }
+        if (task.pdfUrl) {
+          const pdfLink = document.createElement("a");
+          pdfLink.href = task.pdfUrl;
+          pdfLink.textContent = "下載 PDF";
+          notice.append(" ", pdfLink);
+        }
+      } else if (task.status === "cancelled") {
+        notice.textContent = `${label}已取消。`;
+      } else {
+        notice.textContent = `${label}生成失敗：${task.error || "未知錯誤"}`;
+      }
+      toastList.prepend(notice);
+    };
+
+    const applyGenerationTasks = (tasks) => {
+      let hasActiveTask = false;
+      tasks.forEach((task) => {
+        const key = taskKey(task.jobId, task.kind);
+        const form = activeGenerationForms.get(key);
+        const isActive = task.status === "queued" || task.status === "running";
+        if (isActive) {
+          hasActiveTask = true;
+          clientActiveTaskKeys.add(key);
+        } else {
+          clientActiveTaskKeys.delete(key);
+        }
+        if (form) {
+          setGenerationFormRunning(form, isActive);
+        }
+        if ((task.status === "completed" || task.status === "failed" || task.status === "cancelled") && !notifiedTaskIds.has(task.id)) {
+          notifiedTaskIds.add(task.id);
+          saveNotifiedTaskIds();
+          addGenerationToast(task);
+          if (task.status === "completed" && task.viewUrl && form?.closest(".app-modal")) {
+            window.location.href = task.viewUrl;
+          }
+        }
+      });
+      clientActiveTaskKeys.forEach((key) => {
+        const form = activeGenerationForms.get(key);
+        if (form) {
+          hasActiveTask = true;
+          setGenerationFormRunning(form, true);
+        }
+      });
+      return hasActiveTask;
+    };
+
+    const pollGenerationTasks = async ({force = false} = {}) => {
+      if (!activeGenerationForms.size || (!force && !clientActiveTaskKeys.size)) return;
+      try {
+        const response = await fetch(`/roles/${roleId}/generation-tasks`, {
+          headers: {"Accept": "application/json"},
+        });
+        if (!response.ok) return;
+        const data = await response.json();
+        const hasActiveTask = applyGenerationTasks(data.tasks || []);
+        if (hasActiveTask) {
+          window.setTimeout(pollGenerationTasks, 2500);
+        }
+      } catch (_error) {
+        window.setTimeout(pollGenerationTasks, 5000);
+      }
+    };
+
+    pollGenerationTasks();
+
+    const pollJobAnalysis = async () => {
+      const pendingAnalysis = document.querySelector('.job-match-score-pending');
+      if (!pendingAnalysis) return;
+      try {
+        const response = await fetch(`/roles/${roleId}/jobs/status`, {headers: {"Accept": "application/json"}});
+        if (!response.ok) return;
+        const data = await response.json();
+        const hasPending = (data.jobs || []).some((job) => ["pending", "running"].includes(job.matchStatus));
+        if (!hasPending) {
+          window.location.reload();
+          return;
+        }
+      } catch (_error) {
+        // The next poll retries while the analysis is still pending.
+      }
+      window.setTimeout(pollJobAnalysis, 2500);
+    };
+
+    pollJobAnalysis();
+
+    document.querySelectorAll("[data-loading-form]").forEach((form) => {
+      if (form.dataset.backgroundGenerate !== undefined) {
+        return;
+      }
+      form.addEventListener("submit", () => {
+        form.classList.add("is-submitting");
+        form.querySelectorAll('button[type="submit"]').forEach((button) => {
+          if (button.disabled) return;
+          button.disabled = true;
+          button.setAttribute("aria-busy", "true");
+          const loadingLabel = button.dataset.loadingLabel;
+          if (loadingLabel) {
+            button.setAttribute("aria-label", loadingLabel);
+          }
+        });
+      });
+    });
+  </script>

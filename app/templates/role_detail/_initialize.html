@@ -1,0 +1,79 @@
+      <section class="role-initialize">
+        <div class="initialize-copy">
+          <div class="role-stepper">
+            <span>步驟 01：個人資料注入</span>
+            <i></i>
+            <span>步驟 02：角色驗證</span>
+          </div>
+          <div class="app-hero-copy">
+            <p class="app-kicker">Initialize profile core</p>
+            <h1>初始化{{ role.name }}角色：上傳或匯入</h1>
+            <p>尚未建立個人資訊。為開始評估流程並生成履歷資料核心，請上傳候選人的履歷檔案，或輸入可參考的公開資料網址。</p>
+          </div>
+        </div>
+        <div class="initialize-console">
+          <form class="initialize-upload-card" method="post" action="/roles/{{ role.id }}/initialize" enctype="multipart/form-data" data-loading-form data-language-popup>
+            <input name="target_language" type="hidden" value="zh" data-target-language-input>
+            <div class="scan-line" aria-hidden="true"></div>
+            <div class="initialize-upload-panel">
+              <span class="material-symbols-outlined upload-panel-icon">upload_file</span>
+              <h2>檔案上傳</h2>
+              <p>拖放或選擇 PDF、DOCX、TXT、Markdown 履歷檔案。開始初始化後會和網址來源一起交給 AI 整合成角色資料。</p>
+              <label class="initialize-file-picker">
+                <span>選擇檔案</span>
+                <input name="resume_file" type="file" accept=".pdf,.docx,.txt,.md,.markdown">
+              </label>
+            </div>
+
+            <div class="initialize-import-panel">
+              <span class="material-symbols-outlined upload-panel-icon upload-panel-icon-secondary">link</span>
+              <h2>連結匯入</h2>
+              <div class="initialize-link-grid">
+                <label>
+                  <span><span class="material-symbols-outlined">share</span>LinkedIn</span>
+                  <input name="source_url" type="url" placeholder="https://www.linkedin.com/in/...">
+                </label>
+                <label>
+                  <span><span class="material-symbols-outlined">work</span>104 銀行</span>
+                  <input name="source_url" type="url" placeholder="https://www.104.com.tw/profile/...">
+                </label>
+                <label>
+                  <span><span class="material-symbols-outlined">cake</span>CakeResume</span>
+                  <input name="source_url" type="url" placeholder="https://www.cake.me/...">
+                </label>
+                <label>
+                  <span><span class="material-symbols-outlined">rocket_launch</span>Yourator</span>
+                  <input name="source_url" type="url" placeholder="https://www.yourator.co/...">
+                </label>
+              </div>
+            </div>
+
+            <div class="initialize-console-footer">
+              <span><span class="material-symbols-outlined">security</span>本機工作區保存</span>
+              <span><span class="material-symbols-outlined">memory</span>AI 解析就緒</span>
+              <small>workspace/{{ role.id }}/evidence</small>
+            </div>
+            <div class="initialize-submit-row">
+              {{ loading_button("開始初始化", "初始化中") }}
+            </div>
+          </form>
+
+          <div class="initialize-feature-grid">
+            <article>
+              <span class="material-symbols-outlined">analytics</span>
+              <h3>即時能力差距</h3>
+              <p>解析後可與目標職缺及既有履歷資料交叉比對，快速找出缺失的技能組合。</p>
+            </article>
+            <article>
+              <span class="material-symbols-outlined">psychology</span>
+              <h3>自動化面試實驗室</h3>
+              <p>結構化履歷會提供後續 AI 生成職缺回覆與面試素材使用。</p>
+            </article>
+            <article>
+              <span class="material-symbols-outlined">history_edu</span>
+              <h3>經歷正規化</h3>
+              <p>非標準職稱、技能與經歷會被整理成一致欄位，方便後續編輯與輸出。</p>
+            </article>
+          </div>
+        </div>
+      </section>
