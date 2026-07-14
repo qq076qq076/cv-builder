@@ -11,6 +11,7 @@ from app.ai.job_insights_generator import GeminiJobInsightsGenerator, _build_int
 from app.ai.tailored_resume_generator import GeminiTailoredResumeGenerator, build_tailored_resume_prompt
 from app.schemas.resume import NormalizedResume
 from app.services.job_service import JobService, _clean_job_page_text, _fetch_job_page_text
+from app.services.markdown_renderer import render_markdown
 from app.services.url_fetcher import UrlFetchResult
 
 
@@ -54,6 +55,18 @@ class FakeGeminiResponse:
 
 
 class JobServiceTest(unittest.TestCase):
+    def test_render_markdown_converts_generated_output_to_safe_html(self) -> None:
+        rendered = render_markdown(
+            "## 面試準備\n\n### 1. 技術取捨\n\n**考察重點：** 判斷能力\n\n- **Situation：** 專案情境\n- `Python`\n"
+        )
+
+        self.assertIn("<h2>面試準備</h2>", rendered)
+        self.assertIn("<h3>1. 技術取捨</h3>", rendered)
+        self.assertIn("<strong>考察重點：</strong> 判斷能力", rendered)
+        self.assertIn("<ul><li><strong>Situation：</strong> 專案情境</li><li><code>Python</code></li></ul>", rendered)
+        self.assertNotIn("##", rendered)
+        self.assertNotIn("<script>", render_markdown("<script>alert(1)</script>"))
+
     def test_interview_prep_markdown_contains_all_categories_and_star_fields(self) -> None:
         question = {
             "question": "請說明你如何處理技術取捨？",

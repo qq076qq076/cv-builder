@@ -12,6 +12,7 @@ from app.ai.tailored_resume_generator import TailoredResumeGenerator
 from app.schemas.job import TrackedJob
 from app.schemas.resume import NormalizedResume
 from app.services.pdf_export_service import ResumePdfExporter
+from app.services.markdown_renderer import render_markdown
 from app.services.url_fetcher import fetch_url_text
 from app.storage.jobs import JobRepository
 from app.storage.generation_tasks import GenerationTaskRepository
@@ -23,6 +24,7 @@ class GeneratedJobOutput:
     path: str
     kind: str
     content: str = ""
+    rendered_content: str = ""
     pdf_path: str | None = None
     job_id: str | None = None
 
@@ -119,6 +121,7 @@ class JobService:
             path=relative_path.as_posix(),
             kind=safe_kind,
             content=content,
+            rendered_content=render_markdown(content),
             pdf_path=pdf_path,
             job_id=job.id,
         )
@@ -138,11 +141,13 @@ class JobService:
         output_path = self.role_path / relative_path
         if not output_path.is_file():
             return None
+        content = output_path.read_text(encoding="utf-8")
         pdf_path = self._pdf_path_for(job_id) if safe_kind == "resume" else None
         return GeneratedJobOutput(
             path=relative_path.as_posix(),
             kind=safe_kind,
-            content=output_path.read_text(encoding="utf-8"),
+            content=content,
+            rendered_content=render_markdown(content),
             pdf_path=pdf_path.as_posix() if pdf_path is not None else None,
             job_id=job_id,
         )
@@ -170,10 +175,12 @@ class JobService:
         )
         job_id = _job_id_from_output_name(name, kind)
         pdf_path = self._pdf_path_for(job_id) if kind == "resume" and job_id else None
+        content = output_path.read_text(encoding="utf-8")
         return GeneratedJobOutput(
             path=requested_path.as_posix(),
             kind=kind,
-            content=output_path.read_text(encoding="utf-8"),
+            content=content,
+            rendered_content=render_markdown(content),
             pdf_path=pdf_path.as_posix() if pdf_path is not None else None,
             job_id=job_id,
         )

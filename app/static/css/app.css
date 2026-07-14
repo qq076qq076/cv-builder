@@ -1658,10 +1658,44 @@ textarea {
     linear-gradient(rgba(0, 219, 231, 0.025) 1px, transparent 1px),
     rgba(11, 15, 16, 0.48);
   background-size: 100% 32px;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   font-size: 14px;
   line-height: 1.7;
-  white-space: pre-wrap;
+}
+
+.generated-output-content h1,
+.generated-output-content h2,
+.generated-output-content h3,
+.generated-output-content h4,
+.generated-output-content h5,
+.generated-output-content h6 {
+  margin: 0 0 12px;
+  color: var(--color-primary);
+}
+
+.generated-output-content p,
+.generated-output-content ul,
+.generated-output-content ol {
+  margin: 0 0 16px;
+}
+
+.generated-output-content ul,
+.generated-output-content ol {
+  padding-left: 24px;
+}
+
+.generated-output-content strong {
+  color: var(--color-text-strong, #f3f7f7);
+}
+
+.generated-output-content code {
+  padding: 2px 5px;
+  color: var(--color-primary);
+  background: rgba(0, 219, 231, 0.08);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+.generated-output-content a {
+  color: var(--color-primary);
 }
 
 .upload-form {

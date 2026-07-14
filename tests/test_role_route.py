@@ -930,6 +930,8 @@ class RoleRouteTest(unittest.TestCase):
             self.assertIn("重新生成專用履歷", page.text)
             self.assertIn('data-loading-label="生成專用履歷中，點擊取消"', page.text)
             self.assertIn("針對 https://jobs.example.com/senior-frontend 的專用履歷", page.text)
+            self.assertIn("<h1>Walker Lin</h1>", page.text)
+            self.assertNotIn("# Walker Lin", page.text)
 
             download = client.get(f"/roles/walker/outputs/{job_id}/resume.pdf")
             self.assertEqual(download.status_code, 200)
