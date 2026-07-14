@@ -8,6 +8,7 @@ from urllib.error import HTTPError, URLError
 
 from openai import OpenAI
 
+from app.ai import AI_REQUEST_TIMEOUT_SECONDS
 from app.ai.cover_letter_generator import _extract_gemini_text
 from app.ai.resume_parser import _debug_log_ai_payload
 from app.schemas.job import TrackedJob
@@ -46,7 +47,15 @@ def _parse_json_response(content: str) -> dict:
 
 class OpenAIJobInsightsGenerator:
     def __init__(self, *, api_key: str, model: str, log_path: Path | None = None) -> None:
-        self.client, self.model, self.log_path = OpenAI(api_key=api_key), model, log_path
+        self.client, self.model, self.log_path = (
+            OpenAI(
+                api_key=api_key,
+                timeout=AI_REQUEST_TIMEOUT_SECONDS,
+                max_retries=2,
+            ),
+            model,
+            log_path,
+        )
 
     def _json(self, *, action: str, resume, job, job_page_text) -> dict:
         messages = [
@@ -110,7 +119,7 @@ class GeminiJobInsightsGenerator(OpenAIJobInsightsGenerator):
             method="POST",
         )
         try:
-            with request.urlopen(req) as response:
+            with request.urlopen(req, timeout=AI_REQUEST_TIMEOUT_SECONDS) as response:
                 data = json.loads(response.read().decode("utf-8"))
         except HTTPError as exc:
             detail = exc.read().decode("utf-8", errors="replace")

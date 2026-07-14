@@ -30,7 +30,11 @@ from app.schemas.resume import (
     ResumeLanguage,
     ResumeProject,
 )
-from app.services.import_service import ImportService
+from app.services.import_service import (
+    ImportService,
+    UploadValidationError,
+    read_limited_upload,
+)
 from app.services.job_service import JobService, _fetch_job_page_text
 from app.services.pdf_export_service import PlaywrightResumePdfExporter, ResumePdfExporter
 from app.services.role_service import RoleService
@@ -184,11 +188,22 @@ async def initialize_role_sources(
         )
 
     role_path = role_service.role_path(role_id)
-    source_ids = await _save_submitted_sources(
-        role_path=role_path,
-        resume_file=resume_file,
-        source_url=source_url,
-    )
+    try:
+        source_ids = await _save_submitted_sources(
+            role_path=role_path,
+            resume_file=resume_file,
+            source_url=source_url,
+        )
+    except UploadValidationError as exc:
+        result = ResumeNormalizationResult(status="failed", message=str(exc))
+        return _render_role_detail(
+            request=request,
+            role=role,
+            role_id=role_id,
+            role_path=role_path,
+            role_service=role_service,
+            normalization_result=result,
+        )
 
     if not source_ids:
         result = ResumeNormalizationResult(status="not_found", message="請至少提供一個檔案或網址")
@@ -246,12 +261,23 @@ async def update_role_sources(
         )
 
     role_path = role_service.role_path(role_id)
-    saved_sources = await _update_submitted_sources(
-        role_path=role_path,
-        resume_file=resume_file,
-        source_url=source_url,
-        source_platform=source_platform,
-    )
+    try:
+        saved_sources = await _update_submitted_sources(
+            role_path=role_path,
+            resume_file=resume_file,
+            source_url=source_url,
+            source_platform=source_platform,
+        )
+    except UploadValidationError as exc:
+        result = ResumeNormalizationResult(status="failed", message=str(exc))
+        return _render_role_detail(
+            request=request,
+            role=role,
+            role_id=role_id,
+            role_path=role_path,
+            role_service=role_service,
+            normalization_result=result,
+        )
     message = (
         f"已更新 {len(saved_sources.source_ids)} 筆來源。"
         if saved_sources.source_ids
@@ -1044,7 +1070,7 @@ async def _save_submitted_sources(
         saved_upload = import_service.save_uploaded_file(
             filename=resume_file.filename,
             content_type=resume_file.content_type,
-            content=await resume_file.read(),
+            content=await read_limited_upload(resume_file),
         )
         source_ids.append(saved_upload.source.id)
 

@@ -50,6 +50,8 @@ GEMINI_MODEL=gemini-3.5-flash
 - `CV_BUILDER_WORKSPACE`：本機資料儲存位置，預設可使用 `./workspace`。
 - `OPENAI_API_KEY` / `GEMINI_API_KEY`：任一存在即可啟用 AI 解析與生成；兩者都存在時程式優先使用 OpenAI。
 
+上傳檔案限制為 10 MB，支援 PDF、DOCX、TXT 與 Markdown；AI 服務呼叫有明確 timeout，OpenAI 會自動重試暫時性錯誤。
+
 ## 安裝
 
 建議先用 `pyenv` 安裝並固定 Python 版本，避免不同專案之間的 Python 版本互相影響：
@@ -161,6 +163,8 @@ LinkedIn、104、Cake、Yourator 這類 profile 或職缺 URL 會使用 Playwrig
 - 該頁面是否公開可讀，不需要登入或驗證。
 - 網站是否有防爬、cookie consent、地區限制或其他阻擋。
 - 重新解析來源，讓系統用最新抓取邏輯更新 evidence 檔。
+
+為避免本機服務被利用去抓取內部資源，URL 抓取只接受 http/https，並拒絕 localhost、內部網域與私有／保留 IP 位址。
 
 ## 測試
 

@@ -3,6 +3,7 @@ from __future__ import annotations
 import re
 from hashlib import sha256
 import uuid
+from typing import Protocol
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path, PureWindowsPath
@@ -20,6 +21,47 @@ class SavedUpload:
     is_duplicate: bool = False
 
 
+class UploadValidationError(ValueError):
+    def __init__(self, message: str, *, status_code: int) -> None:
+        super().__init__(message)
+        self.status_code = status_code
+
+
+MAX_UPLOAD_BYTES = 10 * 1024 * 1024
+_ALLOWED_UPLOAD_TYPES = {
+    ".pdf": {"application/pdf", "application/octet-stream"},
+    ".docx": {
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        "application/octet-stream",
+    },
+    ".txt": {"text/plain", "application/octet-stream"},
+    ".md": {"text/markdown", "text/plain", "application/octet-stream"},
+    ".markdown": {"text/markdown", "text/plain", "application/octet-stream"},
+}
+
+
+class _ReadableUpload(Protocol):
+    async def read(self, size: int = -1) -> bytes: ...
+
+
+async def read_limited_upload(upload: _ReadableUpload, *, max_bytes: int = MAX_UPLOAD_BYTES) -> bytes:
+    chunks: list[bytes] = []
+    total = 0
+    chunk_size = 1024 * 1024
+    while True:
+        chunk = await upload.read(chunk_size)
+        if not chunk:
+            break
+        chunks.append(chunk)
+        total += len(chunk)
+        if total > max_bytes:
+            raise UploadValidationError(
+                f"檔案大小不可超過 {max_bytes // (1024 * 1024)} MB。",
+                status_code=413,
+            )
+    return b"".join(chunks)
+
+
 class ImportService:
     def __init__(self, workspace_path: Path) -> None:
         self.workspace_path = workspace_path
@@ -32,6 +74,7 @@ class ImportService:
         content_type: str | None,
         content: bytes,
     ) -> SavedUpload:
+        _validate_upload(filename=filename, content_type=content_type, size=len(content))
         ensure_workspace_dirs(self.workspace_path)
 
         content_hash = sha256(content).hexdigest()
@@ -152,6 +195,29 @@ def _safe_filename(filename: str) -> str:
     normalized = re.sub(r"[^A-Za-z0-9._-]+", "-", path_name)
     normalized = normalized.strip(".-")
     return normalized or "upload"
+
+
+def _validate_upload(*, filename: str, content_type: str | None, size: int) -> None:
+    if size > MAX_UPLOAD_BYTES:
+        raise UploadValidationError(
+            f"檔案大小不可超過 {MAX_UPLOAD_BYTES // (1024 * 1024)} MB。",
+            status_code=413,
+        )
+
+    suffix = Path(PureWindowsPath(filename).name).suffix.casefold()
+    allowed_types = _ALLOWED_UPLOAD_TYPES.get(suffix)
+    if allowed_types is None:
+        raise UploadValidationError(
+            "只支援 PDF、DOCX、TXT 或 Markdown 檔案。",
+            status_code=415,
+        )
+
+    normalized_content_type = (content_type or "").split(";", 1)[0].strip().lower()
+    if normalized_content_type and normalized_content_type not in allowed_types:
+        raise UploadValidationError(
+            "檔案類型與副檔名不一致。",
+            status_code=415,
+        )
 
 
 def _safe_url_filename(url: str) -> str:

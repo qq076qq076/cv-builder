@@ -241,7 +241,7 @@ class JobServiceTest(unittest.TestCase):
             self.assertIn("Company builds retail SaaS", prompt)
             self.assertIn("Angular", prompt)
 
-    def test_gemini_generators_do_not_set_request_timeout(self) -> None:
+    def test_gemini_generators_set_request_timeout(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             service = JobService(Path(tmpdir) / "workspace/walker")
             job = service.create_job_from_url("https://jobs.example.com/frontend")
@@ -261,7 +261,7 @@ class JobServiceTest(unittest.TestCase):
                 )
 
             self.assertEqual(content, "Generated content")
-            self.assertNotIn("timeout", urlopen.call_args.kwargs)
+            self.assertEqual(urlopen.call_args.kwargs["timeout"], 120)
 
             with (
                 patch(
@@ -277,7 +277,7 @@ class JobServiceTest(unittest.TestCase):
                 )
 
             self.assertEqual(content, "Generated content")
-            self.assertNotIn("timeout", urlopen.call_args.kwargs)
+            self.assertEqual(urlopen.call_args.kwargs["timeout"], 120)
 
     def test_fetch_job_page_text_uses_shared_url_fetcher(self) -> None:
         with patch(

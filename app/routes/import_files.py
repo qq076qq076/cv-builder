@@ -1,11 +1,11 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, File, Request, UploadFile, status
+from fastapi import APIRouter, File, HTTPException, Request, UploadFile, status
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
 from app.config import get_settings
-from app.services.import_service import ImportService
+from app.services.import_service import ImportService, UploadValidationError, read_limited_upload
 from app.services.role_service import RoleService
 from app.services.resume_normalization_service import ResumeNormalizationService
 
@@ -36,11 +36,14 @@ async def upload_file(
         )
 
     service = ImportService(role_service.role_path(role_id))
-    saved_upload = service.save_uploaded_file(
-        filename=resume_file.filename or "upload",
-        content_type=resume_file.content_type,
-        content=await resume_file.read(),
-    )
+    try:
+        saved_upload = service.save_uploaded_file(
+            filename=resume_file.filename or "upload",
+            content_type=resume_file.content_type,
+            content=await read_limited_upload(resume_file),
+        )
+    except UploadValidationError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
     _normalize_imported_source(
         settings=settings,
         role_service=role_service,

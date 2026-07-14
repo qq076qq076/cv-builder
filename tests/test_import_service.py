@@ -1,16 +1,50 @@
 import tempfile
 import unittest
+import asyncio
 from hashlib import sha256
 from datetime import datetime, timezone
 from pathlib import Path
 
 from app.schemas.evidence import EvidenceSource
-from app.services.import_service import ImportService
+from app.services.import_service import (
+    MAX_UPLOAD_BYTES,
+    ImportService,
+    UploadValidationError,
+    read_limited_upload,
+)
 from app.storage.evidence import EvidenceRepository
 from tests.test_pdf_importer import SIMPLE_TEXT_PDF
 
 
 class ImportServiceTest(unittest.TestCase):
+    def test_upload_rejects_unsupported_extension(self) -> None:
+        with self.assertRaises(UploadValidationError) as context:
+            ImportService(Path("/tmp/workspace")).save_uploaded_file(
+                filename="resume.exe",
+                content_type="application/octet-stream",
+                content=b"hello",
+            )
+
+        self.assertEqual(context.exception.status_code, 415)
+
+    def test_upload_rejects_mismatched_content_type(self) -> None:
+        with self.assertRaises(UploadValidationError):
+            ImportService(Path("/tmp/workspace")).save_uploaded_file(
+                filename="resume.pdf",
+                content_type="text/plain",
+                content=b"hello",
+            )
+
+    def test_read_limited_upload_rejects_large_content(self) -> None:
+        class FakeUpload:
+            async def read(self, size: int = -1) -> bytes:
+                return b"x" * (MAX_UPLOAD_BYTES + 1)
+
+        with self.assertRaises(UploadValidationError) as context:
+            asyncio.run(read_limited_upload(FakeUpload()))
+
+        self.assertEqual(context.exception.status_code, 413)
+
     def test_save_uploaded_file_writes_file_and_evidence_source(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             workspace = Path(tmpdir) / "workspace"

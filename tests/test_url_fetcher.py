@@ -109,6 +109,20 @@ class UrlFetcherTest(unittest.TestCase):
         self.assertEqual(result.status, "failed")
         self.assertIn("http/https", result.message)
 
+    def test_fetch_url_text_rejects_private_and_local_hosts(self) -> None:
+        for url in ("http://127.0.0.1:8000/health", "http://192.168.1.20/profile", "http://localhost:8000"):
+            with self.subTest(url=url):
+                result = fetch_url_text(url)
+
+                self.assertEqual(result.status, "failed")
+                self.assertIn("安全", result.message)
+
+    def test_fetch_url_text_rejects_malformed_url(self) -> None:
+        result = fetch_url_text("http://[invalid")
+
+        self.assertEqual(result.status, "failed")
+        self.assertIn("網址格式無效", result.message)
+
     def test_fetch_cake_url_uses_playwright_rendered_text(self) -> None:
         browser = FakeBrowser()
 

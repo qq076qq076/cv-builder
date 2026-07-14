@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor
 from concurrent.futures import TimeoutError as FutureTimeoutError
+import ipaddress
 import re
 import socket
 from dataclasses import dataclass
@@ -88,12 +89,26 @@ class _ReadableHTMLParser(HTMLParser):
 
 def fetch_url_text(url: str, *, timeout: float = 10.0) -> UrlFetchResult:
     normalized_url = url.strip()
-    parsed = urlparse(normalized_url)
+    try:
+        parsed = urlparse(normalized_url)
+    except ValueError as exc:
+        return UrlFetchResult(
+            url=normalized_url,
+            status="failed",
+            message=f"網址格式無效：{exc}",
+        )
     if parsed.scheme not in {"http", "https"}:
         return UrlFetchResult(
             url=normalized_url,
             status="failed",
             message="只支援 http/https 網址",
+        )
+
+    if _is_blocked_remote_host(parsed.hostname):
+        return UrlFetchResult(
+            url=normalized_url,
+            status="failed",
+            message="為了安全，無法抓取 localhost、內部網域或私有 IP 位址。",
         )
 
     if _should_render_with_playwright(parsed):
@@ -273,6 +288,30 @@ def _normalize_text(value: str) -> str:
 def _looks_like_timeout_message(value: str) -> bool:
     normalized = value.lower()
     return "timeout" in normalized or "timed out" in normalized or "逾時" in normalized
+
+
+def _is_blocked_remote_host(hostname: str | None) -> bool:
+    if not hostname:
+        return True
+
+    host = hostname.rstrip(".").casefold()
+    if host in {"localhost", "localhost.localdomain", "broadcasthost", "ip6-localhost"}:
+        return True
+    if host.endswith((".localhost", ".local", ".internal", ".home.arpa")):
+        return True
+
+    try:
+        address = ipaddress.ip_address(host)
+    except ValueError:
+        return False
+    return (
+        address.is_private
+        or address.is_loopback
+        or address.is_link_local
+        or address.is_reserved
+        or address.is_unspecified
+        or address.is_multicast
+    )
 
 
 def _should_render_with_playwright(parsed) -> bool:
