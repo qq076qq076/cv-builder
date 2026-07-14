@@ -1,12 +1,13 @@
 import unittest
 import tempfile
+import json
 from contextlib import redirect_stdout
 from io import StringIO
 from pathlib import Path
 from unittest.mock import patch
 
 from app.ai.cover_letter_generator import GeminiCoverLetterGenerator, build_cover_letter_prompt
-from app.ai.job_insights_generator import _build_interview_prep_markdown
+from app.ai.job_insights_generator import GeminiJobInsightsGenerator, _build_interview_prep_markdown
 from app.ai.tailored_resume_generator import GeminiTailoredResumeGenerator, build_tailored_resume_prompt
 from app.schemas.resume import NormalizedResume
 from app.services.job_service import JobService, _clean_job_page_text, _fetch_job_page_text
@@ -39,6 +40,9 @@ class FakeResumePdfExporter:
 
 
 class FakeGeminiResponse:
+    def __init__(self, body: bytes = b'{"output_text": "Generated content"}') -> None:
+        self.body = body
+
     def __enter__(self):
         return self
 
@@ -46,7 +50,7 @@ class FakeGeminiResponse:
         pass
 
     def read(self) -> bytes:
-        return b'{"output_text": "Generated content"}'
+        return self.body
 
 
 class JobServiceTest(unittest.TestCase):
@@ -77,6 +81,44 @@ class JobServiceTest(unittest.TestCase):
         self.assertIn("## 專案深挖問題", markdown)
         self.assertIn("**Situation：** 專案需要在期限內完成。", markdown)
         self.assertIn("**Result：** 完成可維護的實作。", markdown)
+
+    def test_gemini_interview_prep_accepts_interview_system_prompt(self) -> None:
+        question = {
+            "question": "請說明你的技術取捨？",
+            "why_it_matters": "確認技術判斷。",
+            "star_answer": {
+                "situation": "情境",
+                "task": "任務",
+                "action": "行動",
+                "result": "結果",
+            },
+        }
+        response_body = json.dumps(
+            {
+                "output_text": json.dumps(
+                    {
+                        "technical": [question, question],
+                        "behavioral": [question, question],
+                        "management": [question, question],
+                        "project_deep_dive": [question, question],
+                    },
+                    ensure_ascii=False,
+                )
+            },
+            ensure_ascii=False,
+        ).encode("utf-8")
+
+        with patch(
+            "app.ai.job_insights_generator.request.urlopen",
+            return_value=FakeGeminiResponse(response_body),
+        ):
+            markdown = GeminiJobInsightsGenerator(api_key="test-key", model="test-model").generate_interview_prep(
+                resume=NormalizedResume(name="Walker Lin"),
+                job=type("Job", (), {"model_dump": lambda self, **kwargs: {"url": "https://jobs.example.com"}})(),
+                job_page_text="Frontend role",
+            )
+
+        self.assertIn("## 技術問題", markdown)
 
     def test_create_job_from_url_persists_job(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:

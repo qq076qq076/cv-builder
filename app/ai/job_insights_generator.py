@@ -127,10 +127,18 @@ class GeminiJobInsightsGenerator(OpenAIJobInsightsGenerator):
     def __init__(self, *, api_key: str, model: str, log_path: Path | None = None) -> None:
         self.api_key, self.model, self.log_path = api_key, model, log_path
 
-    def _json(self, *, action: str, resume, job, job_page_text) -> dict:
+    def _json(
+        self,
+        *,
+        action: str,
+        resume,
+        job,
+        job_page_text,
+        system_prompt: str = SYSTEM_PROMPT,
+    ) -> dict:
         payload = {
             "model": self.model,
-            "input": f"{INTERVIEW_PREP_SYSTEM_PROMPT if action == 'interview_prep' else SYSTEM_PROMPT}\n{build_insights_prompt(action=action, resume=resume, job=job, job_page_text=job_page_text)}",
+            "input": f"{system_prompt}\n{build_insights_prompt(action=action, resume=resume, job=job, job_page_text=job_page_text)}",
         }
         _debug_log_ai_payload("Gemini job insights input", payload, self.log_path)
         req = request.Request(

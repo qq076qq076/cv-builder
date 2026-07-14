@@ -212,7 +212,7 @@
           notifiedTaskIds.add(task.id);
           saveNotifiedTaskIds();
           addGenerationToast(task);
-          if (task.status === "completed" && task.viewUrl && form?.closest(".app-modal")) {
+          if (task.status === "completed" && task.viewUrl && (form?.closest(".app-modal") || form?.dataset.retryGeneration !== undefined)) {
             window.location.href = task.viewUrl;
           }
         }
