@@ -1569,6 +1569,56 @@ textarea {
   margin-left: auto;
 }
 
+.cover-letter-regeneration-dialog {
+  width: min(560px, calc(100% - 32px));
+  padding: 0;
+  border: 1px solid rgba(0, 219, 231, 0.45);
+  border-radius: var(--radius-md);
+  color: var(--color-text);
+  background: rgba(16, 20, 21, 0.98);
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.6), 0 0 28px rgba(0, 219, 231, 0.2);
+}
+
+.cover-letter-regeneration-dialog::backdrop {
+  background: rgba(0, 0, 0, 0.72);
+  backdrop-filter: blur(8px);
+}
+
+.cover-letter-regeneration-dialog .app-modal-heading {
+  padding: 20px 24px;
+}
+
+.cover-letter-regeneration-body {
+  display: grid;
+  gap: 16px;
+  padding: 24px;
+}
+
+.cover-letter-regeneration-body p {
+  margin: 0;
+  color: var(--color-muted);
+}
+
+.cover-letter-regeneration-body label {
+  display: grid;
+  gap: 8px;
+  color: var(--color-text-strong);
+  font-weight: 800;
+}
+
+.cover-letter-regeneration-body label span {
+  color: var(--color-primary);
+  font-size: 12px;
+  letter-spacing: 0.08em;
+}
+
+.cover-letter-regeneration-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  padding: 0 24px 24px;
+}
+
 .generation-toast-list {
   display: grid;
   gap: 10px;

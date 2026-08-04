@@ -119,6 +119,9 @@
           if (!response.ok) {
             throw new Error(`HTTP ${response.status}`);
           }
+          // Keep the refinement dialog open while the background task runs.
+          // It closes through the completed-task redirect, not on the initial
+          // acknowledgement that only confirms the task was queued.
           pollGenerationTasks({force: true});
         } catch (error) {
           clientActiveTaskKeys.delete(key);
@@ -245,6 +248,24 @@
     };
 
     pollGenerationTasks();
+
+    const coverLetterRegenerationDialog = document.querySelector("[data-cover-letter-regeneration-dialog]");
+    document.querySelectorAll("[data-open-cover-letter-regeneration]").forEach((button) => {
+      button.addEventListener("click", () => {
+        if (!coverLetterRegenerationDialog) return;
+        if (typeof coverLetterRegenerationDialog.showModal === "function") {
+          coverLetterRegenerationDialog.showModal();
+        } else {
+          coverLetterRegenerationDialog.setAttribute("open", "");
+        }
+        coverLetterRegenerationDialog.querySelector("textarea")?.focus();
+      });
+    });
+    document.querySelectorAll("[data-close-cover-letter-regeneration]").forEach((button) => {
+      button.addEventListener("click", () => {
+        coverLetterRegenerationDialog?.close();
+      });
+    });
 
     const pollJobAnalysis = async () => {
       const pendingAnalysis = document.querySelector('.job-match-score-pending');

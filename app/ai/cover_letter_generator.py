@@ -21,6 +21,7 @@ class CoverLetterGenerator(Protocol):
         resume: NormalizedResume,
         job: TrackedJob,
         job_page_text: str = "",
+        adjustment_suggestions: str = "",
     ) -> str:
         pass
 
@@ -41,6 +42,7 @@ class OpenAICoverLetterGenerator:
         resume: NormalizedResume,
         job: TrackedJob,
         job_page_text: str = "",
+        adjustment_suggestions: str = "",
     ) -> str:
         messages = [
             {"role": "system", "content": COVER_LETTER_SYSTEM_PROMPT},
@@ -50,6 +52,7 @@ class OpenAICoverLetterGenerator:
                     resume=resume,
                     job=job,
                     job_page_text=job_page_text,
+                    adjustment_suggestions=adjustment_suggestions,
                 ),
             },
         ]
@@ -79,6 +82,7 @@ class GeminiCoverLetterGenerator:
         resume: NormalizedResume,
         job: TrackedJob,
         job_page_text: str = "",
+        adjustment_suggestions: str = "",
     ) -> str:
         payload = {
             "model": self.model,
@@ -86,6 +90,7 @@ class GeminiCoverLetterGenerator:
                 resume=resume,
                 job=job,
                 job_page_text=job_page_text,
+                adjustment_suggestions=adjustment_suggestions,
             ),
         }
         _debug_log_ai_payload("Gemini cover letter input", payload, self.log_path)
@@ -124,6 +129,7 @@ Rules:
 - Tailor the letter to the target job description, company/product traits, and job metadata.
 - Explicitly connect 2-4 concrete resume facts to requirements or signals found in the job page.
 - If job page text is available, use it as the primary source for company traits, responsibilities, and requirements.
+- If adjustment suggestions are provided, use them as generation guidance while still following the resume-only and no-fabrication rules.
 - Use resume facts only. Do not invent employers, metrics, degrees, or achievements.
 - Return only the letter body. Do not use markdown headings.
 """
@@ -134,6 +140,7 @@ def build_cover_letter_prompt(
     resume: NormalizedResume,
     job: TrackedJob,
     job_page_text: str = "",
+    adjustment_suggestions: str = "",
 ) -> str:
     resume_payload = resume.model_dump(mode="json", by_alias=True)
     job_payload = job.model_dump(mode="json", by_alias=True)
@@ -151,6 +158,8 @@ def build_cover_letter_prompt(
         f"{normalized_job_page_text or '(未能擷取職缺頁面內容)'}"
         "履歷內容："
         f"{json.dumps(resume_payload, ensure_ascii=False, indent=2, default=str)}"
+        "使用者對這封推薦信的調整建議（僅作為修改方向，不可視為履歷事實）："
+        f"{adjustment_suggestions.strip() or '(沒有額外調整建議)'}"
     )
 
 

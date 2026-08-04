@@ -47,7 +47,7 @@ class JobService:
         match_error: str = "",
     ) -> TrackedJob:
         normalized_url = url.strip()
-        title = _title_from_url(normalized_url)
+        title = _fetch_job_title(normalized_url) or _title_from_url(normalized_url)
         job = TrackedJob(
             id=f"job_{uuid.uuid4().hex}",
             title=title,
@@ -89,6 +89,7 @@ class JobService:
         tailored_resume_generator: TailoredResumeGenerator | None = None,
         resume_pdf_exporter: ResumePdfExporter | None = None,
         insights_generator=None,
+        adjustment_suggestions: str = "",
     ) -> GeneratedJobOutput | None:
         job = self.repository.get_job(job_id)
         if job is None:
@@ -105,6 +106,7 @@ class JobService:
             cover_letter_generator=cover_letter_generator,
             tailored_resume_generator=tailored_resume_generator,
             insights_generator=insights_generator,
+            adjustment_suggestions=adjustment_suggestions,
         )
         atomic_write_text(output_path, content)
         pdf_path = None
@@ -207,6 +209,14 @@ def _title_from_url(url: str) -> str:
     return cleaned.title() if cleaned else "未命名職缺"
 
 
+def _fetch_job_title(url: str) -> str:
+    """Read the job page title, falling back to the URL when unavailable."""
+    result = fetch_url_text(url, timeout=10)
+    if result.status != "completed":
+        return ""
+    return re.sub(r"\s+", " ", result.title).strip()
+
+
 def _company_from_url(url: str) -> str:
     parsed = urlparse(url)
     host = parsed.netloc.replace("www.", "")
@@ -232,6 +242,7 @@ def _build_generated_markdown(
     cover_letter_generator: CoverLetterGenerator | None = None,
     tailored_resume_generator: TailoredResumeGenerator | None = None,
     insights_generator=None,
+    adjustment_suggestions: str = "",
 ) -> str:
     job_page_text = job.description.strip() or _fetch_job_page_text(job.url)
 
@@ -269,6 +280,7 @@ def _build_generated_markdown(
         resume=resume,
         job=job,
         job_page_text=job_page_text,
+        adjustment_suggestions=adjustment_suggestions,
     )
 
 

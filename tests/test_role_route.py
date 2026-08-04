@@ -13,20 +13,23 @@ from app.schemas.evidence import EvidenceSource
 from app.schemas.resume import NormalizedResume
 from app.schemas.role import RoleProfile
 from app.services.role_service import RoleService
+from app.services.url_fetcher import UrlFetchResult
 from app.storage.evidence import EvidenceRepository
 from app.storage.resume import ResumeRepository
 
 
 class FakeCoverLetterGenerator:
     calls = []
+    adjustment_calls = []
 
     def __init__(self, *, api_key: str, model: str, log_path: Path | None = None) -> None:
         self.api_key = api_key
         self.model = model
         self.log_path = log_path
 
-    def generate(self, *, resume, job, job_page_text: str = "") -> str:
+    def generate(self, *, resume, job, job_page_text: str = "", adjustment_suggestions: str = "") -> str:
         self.calls.append((self.api_key, self.model, resume.name, job.url, job_page_text))
+        self.adjustment_calls.append(adjustment_suggestions)
         return f"我是 {resume.name}，針對 {job.url} 申請此職缺。"
 
 
@@ -140,6 +143,14 @@ class FailingResumeNormalizationService(FakeResumeNormalizationService):
 
 
 class RoleRouteTest(unittest.TestCase):
+    def setUp(self) -> None:
+        self.job_title_fetcher = patch(
+            "app.services.job_service.fetch_url_text",
+            return_value=UrlFetchResult(url="", status="failed"),
+        )
+        self.job_title_fetcher.start()
+        self.addCleanup(self.job_title_fetcher.stop)
+
     def test_create_role_redirects_to_role_detail(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             workspace = Path(tmpdir) / "workspace"
@@ -762,6 +773,36 @@ class RoleRouteTest(unittest.TestCase):
             self.assertIn("data-cancel-action", response.text)
             self.assertIn("button-spinner", response.text)
 
+    def test_role_detail_marks_generated_job_outputs_with_check_icons(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            workspace = Path(tmpdir) / "workspace"
+            role_service = RoleService(workspace)
+            role_service.create_role("Walker")
+            role_service.save_profile("walker", RoleProfile(name="Walker Lin"))
+            client = self._client_for(workspace)
+            client.post(
+                "/roles/walker/jobs",
+                data={"job_url": "https://jobs.example.com/senior-frontend"},
+            )
+
+            jobs_path = workspace / "walker/jobs/jobs.json"
+            job_id = json.loads(jobs_path.read_text(encoding="utf-8"))["jobs"][0]["id"]
+            output_dir = workspace / "walker/outputs"
+            output_dir.mkdir(parents=True, exist_ok=True)
+            for kind in ("resume", "cover-letter", "suggestions", "interview-prep"):
+                (output_dir / f"{job_id}-{kind}.md").write_text(
+                    f"已生成 {kind}",
+                    encoding="utf-8",
+                )
+
+            response = client.get("/roles/walker")
+
+            self.assertEqual(response.status_code, 200)
+            self.assertIn('check_circle</span>履歷</a>', response.text)
+            self.assertIn('check_circle</span>推薦信</a>', response.text)
+            self.assertIn('check_circle</span>建議</a>', response.text)
+            self.assertIn('check_circle</span>面試準備</a>', response.text)
+
     def test_generate_job_output_shows_running_state_after_reload_and_can_cancel(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             workspace = Path(tmpdir) / "workspace"
@@ -1008,6 +1049,34 @@ class RoleRouteTest(unittest.TestCase):
             self.assertIn("查看推薦信", page.text)
             self.assertIn("重新生成推薦信", page.text)
             self.assertIn('data-loading-label="生成推薦信中，點擊取消"', page.text)
+            self.assertIn("data-open-cover-letter-regeneration", page.text)
+            self.assertIn("data-cover-letter-regeneration", page.text)
+            self.assertIn('name="adjustment_suggestions"', page.text)
+            self.assertIn("請描述希望調整的方向", page.text)
+
+            FakeCoverLetterGenerator.adjustment_calls = []
+            with (
+                patch("app.routes.roles.OpenAICoverLetterGenerator", FakeCoverLetterGenerator),
+                patch(
+                    "app.services.job_service._fetch_job_page_text",
+                    return_value="Senior frontend role for a jobs platform using Angular.",
+                ),
+                patch("app.routes.roles.threading.Thread", ImmediateThread),
+            ):
+                regenerate_response = client.post(
+                    f"/roles/walker/jobs/{job_id}/generate",
+                    data={
+                        "kind": "cover_letter",
+                        "adjustment_suggestions": "請更強調跨團隊協作，語氣更積極。",
+                    },
+                    follow_redirects=False,
+                )
+
+            self.assertEqual(regenerate_response.status_code, 303)
+            self.assertEqual(
+                FakeCoverLetterGenerator.adjustment_calls,
+                ["請更強調跨團隊協作，語氣更積極。"],
+            )
 
     def test_generate_cover_letter_without_api_key_shows_error(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:

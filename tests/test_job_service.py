@@ -18,7 +18,14 @@ from app.services.url_fetcher import UrlFetchResult
 class FakeCoverLetterGenerator:
     calls = []
 
-    def generate(self, *, resume: NormalizedResume, job, job_page_text: str = "") -> str:
+    def generate(
+        self,
+        *,
+        resume: NormalizedResume,
+        job,
+        job_page_text: str = "",
+        adjustment_suggestions: str = "",
+    ) -> str:
         self.calls.append((resume.name, job.url, job_page_text))
         return f"我是 {resume.name}，想應徵 {job.url}。"
 
@@ -55,6 +62,14 @@ class FakeGeminiResponse:
 
 
 class JobServiceTest(unittest.TestCase):
+    def setUp(self) -> None:
+        self.job_title_fetcher = patch(
+            "app.services.job_service.fetch_url_text",
+            return_value=UrlFetchResult(url="", status="failed"),
+        )
+        self.job_title_fetcher.start()
+        self.addCleanup(self.job_title_fetcher.stop)
+
     def test_render_markdown_converts_generated_output_to_safe_html(self) -> None:
         rendered = render_markdown(
             "## 面試準備\n\n### 1. 技術取捨\n\n**考察重點：** 判斷能力\n\n- **Situation：** 專案情境\n- `Python`\n"
@@ -138,12 +153,36 @@ class JobServiceTest(unittest.TestCase):
             role_path = Path(tmpdir) / "workspace/walker"
             service = JobService(role_path)
 
-            job = service.create_job_from_url("https://jobs.example.com/senior-frontend")
+            with patch(
+                "app.services.job_service.fetch_url_text",
+                return_value=UrlFetchResult(
+                    url="https://jobs.example.com/senior-frontend",
+                    status="completed",
+                    title="Senior Frontend Engineer",
+                ),
+            ):
+                job = service.create_job_from_url("https://jobs.example.com/senior-frontend")
 
-            self.assertEqual(job.title, "Senior Frontend")
+            self.assertEqual(job.title, "Senior Frontend Engineer")
             self.assertEqual(job.company, "jobs.example.com")
             self.assertEqual(service.list_jobs()[0].id, job.id)
             self.assertTrue((role_path / "jobs/jobs.json").is_file())
+
+    def test_create_job_from_url_falls_back_to_url_title_when_fetch_fails(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            service = JobService(Path(tmpdir) / "workspace/walker")
+
+            with patch(
+                "app.services.job_service.fetch_url_text",
+                return_value=UrlFetchResult(
+                    url="https://jobs.example.com/senior-frontend",
+                    status="failed",
+                    message="HTTP 404",
+                ),
+            ):
+                job = service.create_job_from_url("https://jobs.example.com/senior-frontend")
+
+            self.assertEqual(job.title, "Senior Frontend")
 
     def test_generate_output_writes_tailored_resume_markdown(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -297,6 +336,14 @@ class JobServiceTest(unittest.TestCase):
             self.assertIn("500字內", prompt)
             self.assertIn("Company builds retail SaaS", prompt)
             self.assertIn("Angular", prompt)
+
+            adjusted_prompt = build_cover_letter_prompt(
+                resume=NormalizedResume(name="Walker Lin"),
+                job=job,
+                adjustment_suggestions="請更強調跨團隊協作，語氣更積極。",
+            )
+            self.assertIn("請更強調跨團隊協作，語氣更積極。", adjusted_prompt)
+            self.assertIn("僅作為修改方向，不可視為履歷事實", adjusted_prompt)
 
     def test_tailored_resume_prompt_includes_job_page_text_and_no_fabrication_rule(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:

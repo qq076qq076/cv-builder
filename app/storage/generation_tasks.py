@@ -25,6 +25,7 @@ class GenerationTask:
     error: str = ""
     created_at: str = ""
     updated_at: str = ""
+    adjustment_suggestions: str = ""
 
     @classmethod
     def from_dict(cls, data: dict) -> GenerationTask:
@@ -38,6 +39,7 @@ class GenerationTask:
             error=str(data.get("error", "")),
             created_at=str(data.get("createdAt", "")),
             updated_at=str(data.get("updatedAt", "")),
+            adjustment_suggestions=str(data.get("adjustmentSuggestions", "")),
         )
 
     def to_dict(self) -> dict[str, str]:
@@ -51,6 +53,7 @@ class GenerationTask:
             "error": self.error,
             "createdAt": self.created_at,
             "updatedAt": self.updated_at,
+            "adjustmentSuggestions": self.adjustment_suggestions,
         }
 
 
@@ -58,7 +61,7 @@ class GenerationTaskRepository:
     def __init__(self, role_path: Path) -> None:
         self.tasks_path = role_path / "jobs/generation_tasks.json"
 
-    def create_task(self, *, job_id: str, kind: str) -> GenerationTask:
+    def create_task(self, *, job_id: str, kind: str, adjustment_suggestions: str = "") -> GenerationTask:
         now = _now_iso()
         task = GenerationTask(
             id=f"gen_{uuid.uuid4().hex}",
@@ -67,6 +70,7 @@ class GenerationTaskRepository:
             status="queued",
             created_at=now,
             updated_at=now,
+            adjustment_suggestions=adjustment_suggestions.strip(),
         )
         with self._lock():
             tasks = self._read_tasks_unlocked()
@@ -119,6 +123,7 @@ class GenerationTaskRepository:
                         error="應用程式在任務完成前中斷，請重新執行。",
                         created_at=task.created_at,
                         updated_at=_now_iso(),
+                        adjustment_suggestions=task.adjustment_suggestions,
                     )
                 )
             if recovered:
@@ -160,6 +165,7 @@ class GenerationTaskRepository:
                         error="",
                         created_at=task.created_at,
                         updated_at=_now_iso(),
+                        adjustment_suggestions=task.adjustment_suggestions,
                     )
                     updated.append(cancelled_task)
                     continue
@@ -218,6 +224,7 @@ class GenerationTaskRepository:
                         error=task.error if error is None else error,
                         created_at=task.created_at,
                         updated_at=_now_iso(),
+                        adjustment_suggestions=task.adjustment_suggestions,
                     )
                 )
             self._write_tasks_unlocked(updated)

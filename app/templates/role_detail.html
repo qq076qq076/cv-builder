@@ -63,10 +63,16 @@
                 </h2>
               </div>
               {% if active_generated_output.job_id %}
+              {% if active_generated_output.kind == "cover-letter" %}
+              <button class="app-button app-button-primary" type="button" data-open-cover-letter-regeneration>
+                重新生成
+              </button>
+              {% else %}
               <form class="modal-regenerate-form" method="post" action="/roles/{{ role.id }}/jobs/{{ active_generated_output.job_id }}/generate" data-loading-form data-background-generate data-job-id="{{ active_generated_output.job_id }}" data-generation-kind="{{ active_generated_output.kind }}" data-cancel-action="/roles/{{ role.id }}/jobs/{{ active_generated_output.job_id }}/generation-tasks/cancel">
                 <input name="kind" type="hidden" value="{{ 'cover_letter' if active_generated_output.kind == 'cover-letter' else 'interview_prep' if active_generated_output.kind == 'interview-prep' else active_generated_output.kind }}">
                 {{ loading_button("重新生成", "重新生成中，點擊取消", "app-button-primary") }}
               </form>
+              {% endif %}
               {% endif %}
               <a class="app-modal-close" href="/roles/{{ role.id }}#jobs" aria-label="關閉 popup">
                 <span class="material-symbols-outlined">close</span>
@@ -78,6 +84,33 @@
               </div>
             {% endif %}
             <div class="generated-output-content">{{ active_generated_output.rendered_content | safe }}</div>
+            {% if active_generated_output.kind == "cover-letter" and active_generated_output.job_id %}
+              <dialog class="cover-letter-regeneration-dialog" data-cover-letter-regeneration-dialog aria-labelledby="cover-letter-regeneration-title">
+                <form method="post" action="/roles/{{ role.id }}/jobs/{{ active_generated_output.job_id }}/generate" data-loading-form data-background-generate data-cover-letter-regeneration data-job-id="{{ active_generated_output.job_id }}" data-generation-kind="cover-letter" data-cancel-action="/roles/{{ role.id }}/jobs/{{ active_generated_output.job_id }}/generation-tasks/cancel">
+                  <div class="app-modal-heading">
+                    <div>
+                      <p class="app-kicker">Refine Output</p>
+                      <h2 id="cover-letter-regeneration-title">調整推薦信</h2>
+                    </div>
+                    <button class="app-modal-close" type="button" data-close-cover-letter-regeneration aria-label="關閉調整推薦信 popup">
+                      <span class="material-symbols-outlined">close</span>
+                    </button>
+                  </div>
+                  <div class="cover-letter-regeneration-body">
+                    <p>請描述希望調整的方向，例如語氣、強調的經驗或需要補強的職缺重點。</p>
+                    <label>
+                      <span>調整建議</span>
+                      <textarea name="adjustment_suggestions" rows="6" placeholder="例如：語氣更積極，並多強調 Angular 與團隊協作經驗。" required></textarea>
+                    </label>
+                  </div>
+                  <input name="kind" type="hidden" value="cover_letter">
+                  <div class="cover-letter-regeneration-actions">
+                    <button class="app-button app-button-secondary" type="button" data-close-cover-letter-regeneration>取消</button>
+                    {{ loading_button("送出並重新生成", "重新生成中，點擊取消", "app-button-primary") }}
+                  </div>
+                </form>
+              </dialog>
+            {% endif %}
           </section>
         </div>
       {% endif %}

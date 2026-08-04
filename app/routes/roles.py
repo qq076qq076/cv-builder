@@ -534,6 +534,7 @@ def generate_role_job_output(
     role_id: str,
     job_id: str,
     kind: str = Form(...),
+    adjustment_suggestions: str = Form(default=""),
 ) -> RedirectResponse:
     settings = get_settings()
     role_service = RoleService(settings.workspace_path)
@@ -546,6 +547,7 @@ def generate_role_job_output(
             settings=settings,
             job_id=job_id,
             kind=kind,
+            adjustment_suggestions=adjustment_suggestions if _safe_generation_kind(kind) == "cover-letter" else "",
         )
     return RedirectResponse(f"/roles/{role_id}#jobs", status_code=status.HTTP_303_SEE_OTHER)
 
@@ -558,6 +560,7 @@ def create_generation_task(
     role_id: str,
     job_id: str,
     kind: str = Form(...),
+    adjustment_suggestions: str = Form(default=""),
 ) -> JSONResponse:
     settings = get_settings()
     role_service = RoleService(settings.workspace_path)
@@ -572,6 +575,7 @@ def create_generation_task(
         settings=settings,
         job_id=job_id,
         kind=kind,
+        adjustment_suggestions=adjustment_suggestions if _safe_generation_kind(kind) == "cover-letter" else "",
     )
     return JSONResponse(
         status_code=status.HTTP_202_ACCEPTED,
@@ -631,6 +635,7 @@ def retry_generation_task(
     role_id: str,
     job_id: str,
     kind: str = Form(...),
+    adjustment_suggestions: str = Form(default=""),
 ) -> JSONResponse:
     settings = get_settings()
     role_service = RoleService(settings.workspace_path)
@@ -645,6 +650,7 @@ def retry_generation_task(
         settings=settings,
         job_id=job_id,
         kind=kind,
+        adjustment_suggestions=adjustment_suggestions if _safe_generation_kind(kind) == "cover-letter" else "",
     )
     return JSONResponse(
         status_code=status.HTTP_202_ACCEPTED,
@@ -923,6 +929,7 @@ def _run_generation_task(*, role_path: Path, settings, task: GenerationTask) -> 
             ),
             resume_pdf_exporter=_build_resume_pdf_exporter(kind=task.kind),
             insights_generator=_build_job_insights_generator(role_path=role_path, settings=settings),
+            adjustment_suggestions=task.adjustment_suggestions,
         )
     except RuntimeError as exc:
         repository.mark_failed(task.id, error=str(exc))
@@ -945,10 +952,18 @@ def _run_generation_task(*, role_path: Path, settings, task: GenerationTask) -> 
     )
 
 
-def _start_generation_task(*, role_path: Path, settings, job_id: str, kind: str) -> GenerationTask:
+def _start_generation_task(
+    *,
+    role_path: Path,
+    settings,
+    job_id: str,
+    kind: str,
+    adjustment_suggestions: str = "",
+) -> GenerationTask:
     task = GenerationTaskRepository(role_path).create_task(
         job_id=job_id,
         kind=_safe_generation_kind(kind),
+        adjustment_suggestions=adjustment_suggestions,
     )
     thread = threading.Thread(
         target=_run_generation_task,
@@ -980,6 +995,7 @@ def _safe_generation_kind(kind: str) -> str:
 
 def _generation_task_payload(*, task: GenerationTask, role_id: str) -> dict[str, str]:
     payload = task.to_dict()
+    payload.pop("adjustmentSuggestions", None)
     payload["label"] = {
         "cover-letter": "推薦信",
         "suggestions": "建議",
