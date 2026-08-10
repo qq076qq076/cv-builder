@@ -48,9 +48,34 @@
     {% if not has_role_content %}
       {% include "role_detail/_initialize.html" %}
     {% else %}
-      {% include "role_detail/_resume_editor.html" %}
+      <div class="role-tabs" data-role-tabs>
+        <nav class="role-tab-list" aria-label="個人詳情頁籤" role="tablist">
+          <button class="role-tab is-active" id="role-tab-resume-trigger" type="button" role="tab" aria-selected="true" aria-controls="role-tab-resume" data-tab-trigger="resume">
+            <span class="material-symbols-outlined" aria-hidden="true">description</span>
+            個人履歷
+          </button>
+          <button class="role-tab" id="role-tab-jobs-trigger" type="button" role="tab" aria-selected="false" aria-controls="role-tab-jobs" data-tab-trigger="jobs">
+            <span class="material-symbols-outlined" aria-hidden="true">work_history</span>
+            職缺追蹤清單
+          </button>
+          <button class="role-tab" id="role-tab-evidence-trigger" type="button" role="tab" aria-selected="false" aria-controls="role-tab-evidence" data-tab-trigger="evidence">
+            <span class="material-symbols-outlined" aria-hidden="true">database</span>
+            Evidence 來源
+          </button>
+        </nav>
 
-      {% include "role_detail/_jobs.html" %}
+        <section class="role-tab-panel is-active" id="role-tab-resume" role="tabpanel" aria-labelledby="role-tab-resume-trigger" data-tab-panel="resume">
+          {% include "role_detail/_resume_editor.html" %}
+        </section>
+        <section class="role-tab-panel" id="role-tab-jobs" role="tabpanel" aria-labelledby="role-tab-jobs-trigger" data-tab-panel="jobs" hidden>
+          {% include "role_detail/_jobs.html" %}
+        </section>
+        <section class="role-tab-panel" id="role-tab-evidence" role="tabpanel" aria-labelledby="role-tab-evidence-trigger" data-tab-panel="evidence" hidden>
+          {% include "role_detail/_evidence.html" %}
+        </section>
+      </div>
+
+      <div class="generation-toast-list" data-generation-toasts aria-live="polite"></div>
 
       {% if active_generated_output %}
         <div class="app-modal-backdrop" role="presentation">
@@ -114,10 +139,6 @@
           </section>
         </div>
       {% endif %}
-    {% endif %}
-
-    {% if has_role_content %}
-    {% include "role_detail/_evidence.html" %}
     {% endif %}
   </section>
   <dialog class="language-dialog" data-language-dialog aria-labelledby="language-dialog-title">

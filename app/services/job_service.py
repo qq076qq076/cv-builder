@@ -79,6 +79,14 @@ class JobService:
                 path.unlink()
         return True
 
+    def remove_output(self, *, job_id: str, kind: str) -> bool:
+        safe_kind = _safe_output_kind(kind)
+        output_path = self.role_path / "outputs" / f"{job_id}-{safe_kind}.md"
+        if not output_path.is_file():
+            return False
+        output_path.unlink()
+        return True
+
     def generate_output(
         self,
         *,

@@ -6,7 +6,7 @@ from pathlib import Path
 from urllib.parse import urlparse
 
 from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile, status
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, Response
 from fastapi.templating import Jinja2Templates
 
 from app.ai.cover_letter_generator import (
@@ -531,24 +531,34 @@ def list_role_job_status(role_id: str) -> JSONResponse:
 
 @router.post("/roles/{role_id}/jobs/{job_id}/generate")
 def generate_role_job_output(
+    request: Request,
     role_id: str,
     job_id: str,
     kind: str = Form(...),
     adjustment_suggestions: str = Form(default=""),
-) -> RedirectResponse:
+) -> Response:
     settings = get_settings()
     role_service = RoleService(settings.workspace_path)
     role = role_service.get_role(role_id)
     if role is not None:
-        if JobService(role_service.role_path(role_id)).get_job(job_id) is None:
+        job_service = JobService(role_service.role_path(role_id))
+        if job_service.get_job(job_id) is None:
             raise HTTPException(status_code=404, detail="Job not found")
-        _start_generation_task(
+        safe_kind = _safe_generation_kind(kind)
+        if safe_kind == "cover-letter":
+            job_service.remove_output(job_id=job_id, kind=safe_kind)
+        task = _start_generation_task(
             role_path=role_service.role_path(role_id),
             settings=settings,
             job_id=job_id,
             kind=kind,
-            adjustment_suggestions=adjustment_suggestions if _safe_generation_kind(kind) == "cover-letter" else "",
+            adjustment_suggestions=adjustment_suggestions if safe_kind == "cover-letter" else "",
         )
+        if request.headers.get("X-Requested-With") == "fetch":
+            return JSONResponse(
+                status_code=status.HTTP_202_ACCEPTED,
+                content={"task": _generation_task_payload(task=task, role_id=role_id)},
+            )
     return RedirectResponse(f"/roles/{role_id}#jobs", status_code=status.HTTP_303_SEE_OTHER)
 
 

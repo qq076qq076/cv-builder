@@ -314,6 +314,10 @@ class RoleRouteTest(unittest.TestCase):
 
             self.assertEqual(response.status_code, 200)
             self.assertIn("個人概要", response.text)
+            self.assertIn('role="tablist"', response.text)
+            self.assertIn("個人履歷", response.text)
+            self.assertIn("職缺追蹤清單", response.text)
+            self.assertIn("Evidence 來源", response.text)
             self.assertIn("material-symbols-outlined edit-icon", response.text)
             self.assertIn("Walker Lin", response.text)
             self.assertNotIn('href="/roles/walker/import">上傳履歷', response.text)
@@ -768,12 +772,14 @@ class RoleRouteTest(unittest.TestCase):
             self.assertEqual(response.status_code, 200)
             self.assertIn("職缺追蹤清單", response.text)
             self.assertIn("Senior Frontend", response.text)
+            self.assertIn("新增日期：", response.text)
+            self.assertNotIn("job-company-badge", response.text)
             self.assertIn('data-loading-label="生成專用履歷中，點擊取消"', response.text)
             self.assertIn('data-loading-label="生成推薦信中，點擊取消"', response.text)
             self.assertIn("data-cancel-action", response.text)
             self.assertIn("button-spinner", response.text)
 
-    def test_role_detail_marks_generated_job_outputs_with_check_icons(self) -> None:
+    def test_role_detail_keeps_generation_actions_after_output_exists(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             workspace = Path(tmpdir) / "workspace"
             role_service = RoleService(workspace)
@@ -798,10 +804,14 @@ class RoleRouteTest(unittest.TestCase):
             response = client.get("/roles/walker")
 
             self.assertEqual(response.status_code, 200)
-            self.assertIn('check_circle</span>履歷</a>', response.text)
-            self.assertIn('check_circle</span>推薦信</a>', response.text)
-            self.assertIn('check_circle</span>建議</a>', response.text)
-            self.assertIn('check_circle</span>面試準備</a>', response.text)
+            self.assertNotIn('check_circle</span>履歷</a>', response.text)
+            self.assertNotIn('check_circle</span>推薦信</a>', response.text)
+            self.assertNotIn('check_circle</span>建議</a>', response.text)
+            self.assertNotIn('check_circle</span>面試準備</a>', response.text)
+            self.assertIn('data-generation-kind="resume"', response.text)
+            self.assertIn('data-generation-kind="cover-letter"', response.text)
+            self.assertIn('data-generation-kind="suggestions"', response.text)
+            self.assertIn('data-generation-kind="interview-prep"', response.text)
 
     def test_generate_job_output_shows_running_state_after_reload_and_can_cancel(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -965,10 +975,9 @@ class RoleRouteTest(unittest.TestCase):
             page = client.get(f"/roles/walker?generated_output=outputs/{job_id}-resume.md#jobs")
             self.assertEqual(page.status_code, 200)
             self.assertIn("專用履歷草稿", page.text)
-            self.assertIn("查看專用履歷", page.text)
             self.assertIn(f'href="/roles/walker/outputs/{job_id}/resume.pdf"', page.text)
             self.assertIn("下載 PDF", page.text)
-            self.assertIn("重新生成專用履歷", page.text)
+            self.assertIn("重新生成", page.text)
             self.assertIn('data-loading-label="生成專用履歷中，點擊取消"', page.text)
             self.assertIn("針對 https://jobs.example.com/senior-frontend 的專用履歷", page.text)
             self.assertIn("<h1>Walker Lin</h1>", page.text)
@@ -1046,8 +1055,7 @@ class RoleRouteTest(unittest.TestCase):
             self.assertEqual(page.status_code, 200)
             self.assertIn("針對 https://jobs.example.com/senior-frontend 申請此職缺", page.text)
             self.assertIn("Walker Lin", page.text)
-            self.assertIn("查看推薦信", page.text)
-            self.assertIn("重新生成推薦信", page.text)
+            self.assertIn("重新生成", page.text)
             self.assertIn('data-loading-label="生成推薦信中，點擊取消"', page.text)
             self.assertIn("data-open-cover-letter-regeneration", page.text)
             self.assertIn("data-cover-letter-regeneration", page.text)
@@ -1077,6 +1085,38 @@ class RoleRouteTest(unittest.TestCase):
                 FakeCoverLetterGenerator.adjustment_calls,
                 ["請更強調跨團隊協作，語氣更積極。"],
             )
+
+    def test_cover_letter_regeneration_removes_old_output_before_queueing(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            workspace = Path(tmpdir) / "workspace"
+            role_service = RoleService(workspace)
+            role_service.create_role("Walker")
+            role_service.save_profile("walker", RoleProfile(name="Walker Lin"))
+            client = self._client_for(workspace, openai_api_key="openai-key")
+            client.post(
+                "/roles/walker/jobs",
+                data={"job_url": "https://jobs.example.com/senior-frontend"},
+            )
+            jobs_path = workspace / "walker/jobs/jobs.json"
+            job_id = json.loads(jobs_path.read_text(encoding="utf-8"))["jobs"][0]["id"]
+            output_path = workspace / f"walker/outputs/{job_id}-cover-letter.md"
+            output_path.parent.mkdir(parents=True, exist_ok=True)
+            output_path.write_text("舊的推薦信", encoding="utf-8")
+
+            with patch("app.routes.roles.threading.Thread", DeferredThread):
+                response = client.post(
+                    f"/roles/walker/jobs/{job_id}/generate",
+                    data={
+                        "kind": "cover_letter",
+                        "adjustment_suggestions": "請更強調團隊協作。",
+                    },
+                    headers={"X-Requested-With": "fetch"},
+                )
+
+            self.assertEqual(response.status_code, 202)
+            self.assertFalse(output_path.exists())
+            self.assertEqual(response.json()["task"]["status"], "queued")
+            self.assertEqual(response.json()["task"]["kind"], "cover-letter")
 
     def test_generate_cover_letter_without_api_key_shows_error(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:

@@ -56,6 +56,43 @@
 
     document.querySelectorAll("[data-language-popup]").forEach(setupLanguagePopup);
 
+    const roleTabs = document.querySelector("[data-role-tabs]");
+    if (roleTabs) {
+      const tabTriggers = Array.from(roleTabs.querySelectorAll("[data-tab-trigger]"));
+      const tabPanels = Array.from(roleTabs.querySelectorAll("[data-tab-panel]"));
+      const tabForHash = (hash) => {
+        if (hash === "jobs") return "jobs";
+        if (hash === "evidence") return "evidence";
+        return "resume";
+      };
+      const selectRoleTab = (tabKey) => {
+        tabTriggers.forEach((trigger) => {
+          const isActive = trigger.dataset.tabTrigger === tabKey;
+          trigger.classList.toggle("is-active", isActive);
+          trigger.setAttribute("aria-selected", isActive ? "true" : "false");
+        });
+        tabPanels.forEach((panel) => {
+          const isActive = panel.dataset.tabPanel === tabKey;
+          panel.classList.toggle("is-active", isActive);
+          panel.hidden = !isActive;
+        });
+      };
+
+      tabTriggers.forEach((trigger) => {
+        trigger.addEventListener("click", () => {
+          const tabKey = trigger.dataset.tabTrigger || "resume";
+          selectRoleTab(tabKey);
+          window.history.replaceState(
+            null,
+            "",
+            `${window.location.pathname}${window.location.search}#${tabKey}`,
+          );
+        });
+      });
+      window.addEventListener("hashchange", () => selectRoleTab(tabForHash(window.location.hash.slice(1))));
+      selectRoleTab(tabForHash(window.location.hash.slice(1)));
+    }
+
     const roleId = "{{ role.id }}";
     const toastList = document.querySelector("[data-generation-toasts]");
     const activeGenerationForms = new Map();
@@ -68,6 +105,7 @@
       }
     };
     const notifiedTaskIds = new Set(loadNotifiedTaskIds());
+    let generationTasksInitialized = false;
 
     const saveNotifiedTaskIds = () => {
       window.sessionStorage.setItem(
@@ -77,7 +115,7 @@
     };
 
     const taskKey = (jobId, kind) => `${jobId}:${kind}`;
-
+    const generationTaskStorageKey = (jobId, kind) => `generation-pending:${roleId}:${jobId}:${kind}`;
     const setGenerationFormRunning = (form, running) => {
       form.classList.toggle("is-submitting", running);
       form.dataset.generationActive = running ? "true" : "false";
@@ -97,7 +135,10 @@
 
     document.querySelectorAll("[data-background-generate]").forEach((form) => {
       const key = taskKey(form.dataset.jobId, form.dataset.generationKind);
-      activeGenerationForms.set(key, form);
+      if (!activeGenerationForms.has(key)) {
+        activeGenerationForms.set(key, new Set());
+      }
+      activeGenerationForms.get(key).add(form);
       if (form.classList.contains("is-submitting")) {
         clientActiveTaskKeys.add(key);
         setGenerationFormRunning(form, true);
@@ -119,9 +160,17 @@
           if (!response.ok) {
             throw new Error(`HTTP ${response.status}`);
           }
-          // Keep the refinement dialog open while the background task runs.
-          // It closes through the completed-task redirect, not on the initial
-          // acknowledgement that only confirms the task was queued.
+          if (form.closest(".app-modal")) {
+            const data = await response.json();
+            const taskId = data.task?.id;
+            if (!taskId) throw new Error("生成任務回應無效");
+            window.sessionStorage.setItem(
+              generationTaskStorageKey(form.dataset.jobId, form.dataset.generationKind),
+              taskId,
+            );
+            window.location.href = `/roles/${roleId}#jobs`;
+            return;
+          }
           pollGenerationTasks({force: true});
         } catch (error) {
           clientActiveTaskKeys.delete(key);
@@ -176,18 +225,23 @@
       const label = task.label || "生成任務";
       if (task.status === "completed") {
         notice.append(`${label}已生成。`);
+        const actions = document.createElement("div");
+        actions.className = "generation-toast-actions";
         if (task.viewUrl) {
           const viewLink = document.createElement("a");
+          viewLink.className = "app-button app-button-secondary generation-toast-action";
           viewLink.href = task.viewUrl;
-          viewLink.textContent = `查看${label}`;
-          notice.append(" ", viewLink);
+          viewLink.textContent = `顯示${label}`;
+          actions.append(viewLink);
         }
         if (task.pdfUrl) {
           const pdfLink = document.createElement("a");
+          pdfLink.className = "app-button app-button-secondary generation-toast-action";
           pdfLink.href = task.pdfUrl;
           pdfLink.textContent = "下載 PDF";
-          notice.append(" ", pdfLink);
+          actions.append(pdfLink);
         }
+        if (actions.childElementCount) notice.append(actions);
       } else if (task.status === "cancelled") {
         notice.textContent = `${label}已取消。`;
       } else {
@@ -198,33 +252,41 @@
 
     const applyGenerationTasks = (tasks) => {
       let hasActiveTask = false;
+      const latestTasks = new Map();
       tasks.forEach((task) => {
         const key = taskKey(task.jobId, task.kind);
-        const form = activeGenerationForms.get(key);
+        if (!latestTasks.has(key)) latestTasks.set(key, task);
+      });
+      latestTasks.forEach((task) => {
+        const key = taskKey(task.jobId, task.kind);
         const isActive = task.status === "queued" || task.status === "running";
+        const forms = activeGenerationForms.get(key) || new Set();
         if (isActive) {
           hasActiveTask = true;
           clientActiveTaskKeys.add(key);
         } else {
           clientActiveTaskKeys.delete(key);
         }
-        if (form) {
-          setGenerationFormRunning(form, isActive);
+        forms.forEach((form) => setGenerationFormRunning(form, isActive));
+        const pendingTaskId = window.sessionStorage.getItem(
+          generationTaskStorageKey(task.jobId, task.kind),
+        );
+        const shouldNotify = generationTasksInitialized || clientActiveTaskKeys.has(key) || pendingTaskId === task.id;
+        if (pendingTaskId === task.id && task.status !== "queued" && task.status !== "running") {
+          window.sessionStorage.removeItem(generationTaskStorageKey(task.jobId, task.kind));
         }
-        if ((task.status === "completed" || task.status === "failed" || task.status === "cancelled") && !notifiedTaskIds.has(task.id)) {
+        if ((task.status === "completed" || task.status === "failed" || task.status === "cancelled") && shouldNotify && !notifiedTaskIds.has(task.id)) {
           notifiedTaskIds.add(task.id);
           saveNotifiedTaskIds();
           addGenerationToast(task);
-          if (task.status === "completed" && task.viewUrl && (form?.closest(".app-modal") || form?.dataset.retryGeneration !== undefined)) {
-            window.location.href = task.viewUrl;
-          }
         }
       });
+      generationTasksInitialized = true;
       clientActiveTaskKeys.forEach((key) => {
-        const form = activeGenerationForms.get(key);
-        if (form) {
+        const forms = activeGenerationForms.get(key) || new Set();
+        if (forms.size) {
           hasActiveTask = true;
-          setGenerationFormRunning(form, true);
+          forms.forEach((form) => setGenerationFormRunning(form, true));
         }
       });
       return hasActiveTask;
@@ -247,7 +309,7 @@
       }
     };
 
-    pollGenerationTasks();
+    pollGenerationTasks({force: true});
 
     const coverLetterRegenerationDialog = document.querySelector("[data-cover-letter-regeneration-dialog]");
     document.querySelectorAll("[data-open-cover-letter-regeneration]").forEach((button) => {
@@ -263,22 +325,55 @@
     });
     document.querySelectorAll("[data-close-cover-letter-regeneration]").forEach((button) => {
       button.addEventListener("click", () => {
-        coverLetterRegenerationDialog?.close();
+        if (!coverLetterRegenerationDialog) return;
+        if (typeof coverLetterRegenerationDialog.close === "function") {
+          coverLetterRegenerationDialog.close();
+        } else {
+          coverLetterRegenerationDialog.removeAttribute("open");
+        }
       });
     });
 
     const pollJobAnalysis = async () => {
-      const pendingAnalysis = document.querySelector('.job-match-score-pending');
-      if (!pendingAnalysis) return;
+      const matchElements = new Map(
+        Array.from(document.querySelectorAll("[data-job-match]")).map((element) => [element.dataset.jobId, element]),
+      );
+      if (!Array.from(matchElements.values()).some((element) => ["pending", "running"].includes(element.dataset.matchStatus))) return;
       try {
         const response = await fetch(`/roles/${roleId}/jobs/status`, {headers: {"Accept": "application/json"}});
         if (!response.ok) return;
         const data = await response.json();
-        const hasPending = (data.jobs || []).some((job) => ["pending", "running"].includes(job.matchStatus));
-        if (!hasPending) {
-          window.location.reload();
-          return;
-        }
+        let hasPending = false;
+        (data.jobs || []).forEach((job) => {
+          const element = matchElements.get(job.id);
+          if (!element) return;
+          const matchStatus = job.matchStatus || "unavailable";
+          const isPending = ["pending", "running"].includes(matchStatus);
+          hasPending = hasPending || isPending;
+          element.dataset.matchStatus = matchStatus;
+          element.title = "";
+          element.classList.remove("job-match-score-pending", "job-match-score-failed");
+          element.replaceChildren();
+          if (job.matchScore !== null && job.matchScore !== undefined) {
+            element.append("職缺吻合度 ");
+            const score = document.createElement("strong");
+            score.textContent = `${job.matchScore}%`;
+            element.append(score);
+            element.hidden = false;
+          } else if (isPending) {
+            element.classList.add("job-match-score-pending");
+            element.textContent = "職缺吻合度分析中…";
+            element.hidden = false;
+          } else if (matchStatus === "failed") {
+            element.classList.add("job-match-score-failed");
+            element.title = job.matchError || "";
+            element.textContent = "職缺吻合度分析失敗";
+            element.hidden = false;
+          } else {
+            element.hidden = true;
+          }
+        });
+        if (!hasPending) return;
       } catch (_error) {
         // The next poll retries while the analysis is still pending.
       }
